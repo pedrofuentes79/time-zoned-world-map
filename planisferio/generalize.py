@@ -259,6 +259,48 @@ def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
     return boxes, unresolved, boxed
 
 
+def _offshore_per_landmass(parts: gpd.GeoDataFrame) -> dict:
+    """Contorno mar adentro, calculado por masa de tierra y no por huso.
+
+    Groenlandia tiene tres husos. Inflando cada uno por separado, Thule
+    generaba una cuna angular sobre la bahia de Baffin y Danmarkshavn, mas
+    chico que el umbral, no generaba nada. El contorno es una propiedad de
+    la costa, no del huso: se calcula una vez por masa de tierra y se
+    reparte entre los husos que la componen, de mayor a menor superficie.
+    """
+    out: dict[float, list] = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        big = parts[parts["_area"] > OFFSHORE_MIN_DEG2]
+        if big.empty:
+            return {}
+        masses = gpd.GeoSeries(
+            [unary_union(list(big.geometry))]).explode(index_parts=False)
+        for mass in masses:
+            if mass.area <= OFFSHORE_MIN_DEG2:
+                continue
+            ring = (mass.buffer(CLOSING_DEG).buffer(-CLOSING_DEG)
+                        .buffer(OFFSHORE_PAD)
+                        .simplify(OFFSHORE_SIMPLIFY)
+                        .buffer(0))
+            here = big[big.geometry.intersects(mass)]
+            if here.empty:
+                continue
+            order = (here.groupby("std_hours")["_area"].sum()
+                         .sort_values(ascending=False))
+            taken = None
+            for h in order.index:
+                own = unary_union(list(here[here["std_hours"] == h].geometry))
+                claim = ring.intersection(own.buffer(CLOSING_DEG + OFFSHORE_PAD))
+                if taken is not None:
+                    claim = claim.difference(taken)
+                if claim.is_empty:
+                    continue
+                out.setdefault(float(h), []).append(claim)
+                taken = claim if taken is None else unary_union([taken, claim])
+    return {h: unary_union(v) for h, v in out.items()}
+
+
 def build(land_zones: gpd.GeoDataFrame,
           lat: tuple[float, float] = (-90.0, 90.0)) -> gpd.GeoDataFrame:
     parts = land_zones.explode(index_parts=False, ignore_index=True)
@@ -272,11 +314,7 @@ def build(land_zones: gpd.GeoDataFrame,
 
     land_by_zone = {float(h): g for h, g in
                     land_zones.set_index("std_hours").geometry.items()}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        big = parts[parts["_area"] > OFFSHORE_MIN_DEG2]
-        offshore_src = {float(h): unary_union(list(g.geometry))
-                        for h, g in big.groupby("std_hours")}
+    offshore_by_zone = _offshore_per_landmass(parts)
     all_h = sorted(set(land_by_zone) | set(boxes)
                    | {float(k) for k in range(-12, 13)})
 
@@ -297,13 +335,7 @@ def build(land_zones: gpd.GeoDataFrame,
             land = land_by_zone.get(h)
             hard[h] = land
             mid[h] = unary_union(boxes[h]) if boxes.get(h) else None
-            src = offshore_src.get(h)
-            offshore = None
-            if src is not None:
-                offshore = (src.buffer(CLOSING_DEG).buffer(-CLOSING_DEG)
-                               .buffer(OFFSHORE_PAD)
-                               .simplify(OFFSHORE_SIMPLIFY)
-                               .buffer(0))
+            offshore = offshore_by_zone.get(h)
             near[h] = offshore
             band = _theoretical_band(h, lat)
             soft[h] = band

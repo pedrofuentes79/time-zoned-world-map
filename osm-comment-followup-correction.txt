@@ -1,3 +1,3 @@
-Correction to the above: they aren't outside any timezone relation — they're inside Espirito Santo (54882), which carries timezone=America/Sao_Paulo, and that tag is what puts them in UTC-3. Not a fallback.
+Correction to the above: it isn't that nothing covers them — Espirito Santo (54882) does, and it carries timezone=America/Sao_Paulo, which is what puts them in UTC-3. Not a fallback.
 
-Which means the fix is the Pernambuco pattern rather than the ways I listed: drop the timezone tag from 54882 (mainland ES stays covered by 19510840) and add the territorial-sea rings 770537922 and 770537923 to this relation.
+Which means the fix is the Pernambuco pattern rather than the ways I listed: drop the timezone tag from 54882 (mainland ES stays covered by 19510840) and add the territorial-sea rings 770537922 and 770537923 here as outer members.

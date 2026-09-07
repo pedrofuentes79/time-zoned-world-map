@@ -46,7 +46,22 @@ SOVEREIGN_ABBR = {
 SOVEREIGN_OVERRIDES = {
     "Isla Gran Malvina": "ARGENTINA",
     "Isla Soledad": "ARGENTINA",
+    "San Pedro": "ARGENTINA",             # Georgia del Sur
+    "Islas Sandwich del Sur": "ARGENTINA",
+    # Sin poligono admin_0 encima, el cruce espacial no le asigna nada.
+    "Archipiélago de Chagos": "R.U.",
 }
+
+
+# Territorios que Natural Earth no trae como isla nombrada. Sin esto
+# quedan sin rotulo, aunque el mapa les dibuje su recuadro.
+#     (nombre, soberania, lon, lat)
+EXTRA_LABELS = [
+    ("Ascensión",        "R.U.", -14.37,  -7.95),
+    ("Tristán de Acuña", "R.U.", -12.28, -37.11),
+    ("Isla Gough",       "R.U.",  -9.88, -40.32),
+    ("Lord Howe",        "AUSTR.", 159.08, -31.55),
+]
 
 
 def _norm(name: str) -> str:
@@ -103,6 +118,13 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             "priority": float(8 - rank),      # por debajo de cualquier pais
             "lon": float(pt.x), "lat": float(pt.y), "rank": rank,
         })
+
+    for name, sov, lon, lat in EXTRA_LABELS:
+        if _norm(name) in taken:
+            continue
+        taken.add(_norm(name))
+        rows.append({"kind": "island", "name": name, "sovereign": sov,
+                     "priority": 3.0, "lon": lon, "lat": lat, "rank": 5})
 
     df = pd.DataFrame(rows)
     return gpd.GeoDataFrame(

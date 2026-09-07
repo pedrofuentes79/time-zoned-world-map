@@ -91,6 +91,16 @@ TERRITORIES = [
     # ya la toca; solo hacia falta que abarcara tambien la isla menor.
     ("Islas del Príncipe Eduardo", 37.75, -46.85, 2.0, "box"),
     ("Islas Malvinas",        -59.00,  -51.80,  -3.0, "arm"),
+    # Territorios britanicos del Atlantico sur y del Indico: todos por
+    # debajo del umbral de recuadro automatico, asi que sin entrada aqui
+    # quedaban como puntos sueltos del color equivocado.
+    ("Ascensión",             -14.37,   -7.95,   0.0, "arm"),
+    ("Tristán de Acuña",      -12.28,  -37.11,   0.0, "arm"),
+    ("Isla Gough",             -9.88,  -40.32,   0.0, "arm"),
+    ("Archipiélago de Chagos", 72.42,   -7.31,   6.0, "arm"),
+    # UTC+10:30 no tiene banda teorica propia (solo la tienen las horas
+    # enteras), asi que no hay adonde estirar: recuadro suelto.
+    ("Lord Howe",             159.08,  -31.55,  10.5, "box"),
 ]
 
 

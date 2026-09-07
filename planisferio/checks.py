@@ -167,6 +167,23 @@ def _zone_fixes_applied(land: gpd.GeoDataFrame) -> Result:
                   f"las {len(FIXES)} de la tabla" if not bad else ", ".join(bad))
 
 
+def _sovereign_overrides_applied() -> Result:
+    """Cada soberania forzada a mano debe estar en la tabla de rotulos."""
+    from .label_data import SOVEREIGN_OVERRIDES
+    lab = gpd.read_file(CACHE / "labels.gpkg")
+    by_name = dict(zip(lab["name"], lab["sovereign"]))
+    bad = []
+    for name, want in SOVEREIGN_OVERRIDES.items():
+        got = by_name.get(name)
+        if name not in by_name:
+            bad.append(f"{name} (no rotulada)")
+        elif got != want:
+            bad.append(f"{name} ({got})")
+    return Result("soberanias forzadas aplicadas", not bad,
+                  f"las {len(SOVEREIGN_OVERRIDES)} de la tabla"
+                  if not bad else ", ".join(bad))
+
+
 def _ruler_matches_map() -> Result:
     """La regla cubre 24 horas, igual que los 360 grados del mapa."""
     worst = 0.0
@@ -207,6 +224,7 @@ def run() -> bool:
         _fractional_zones_stay_local(land, sea),
         _named_territories_resolve(land, sea),
         _zone_fixes_applied(land),
+        _sovereign_overrides_applied(),
         _ruler_matches_map(),
         _offsets_have_a_column(land),
     ]

@@ -30,78 +30,88 @@ print([r.tzid for _, r in tz.iterrows() if r.geometry.intersects(pt.buffer(0.05)
 
 - Lei 12.876/2013 places Fernando de Noronha, Atol das Rocas, and the
   Trindade e Martim Vaz archipelago in the UTC-2 zone, independently of the
-  state that administers each one. (It restored the zone that Lei
-  11.662/2008 had removed.)
+  state that administers each one. (It restored the zone that Lei 11.662/2008
+  had removed.)
 - `zone1970.tab` describes `America/Noronha` as "Atlantic islands", plural.
-- The islands are uninhabited except for a Brazilian Navy station on
-  Trindade, so practical impact is small — but the boundary is wrong.
+- In OSM, relation
+  [14906453](https://www.openstreetmap.org/relation/14906453)
+  (`UTC−02:00 standard time`, `boundary=timezone`) already covers Trindade —
+  someone has already mapped these islands as UTC-2. It has no `timezone=*`
+  tag, so this project never sees it.
+
+The islands are uninhabited except for a Brazilian Navy station on Trindade,
+so practical impact is small — but the boundary is wrong.
 
 ### Root cause
 
-`downloadFromOverpass` builds the query as `relation["timezone"="<tzid>"]`
-(index.js:471-486), without restricting to `boundary=timezone`. So any
-relation carrying a `timezone` tag contributes to that zone.
+This isn't a bug in the builder. `downloadFromOverpass` queries
+`relation["timezone"="<tzid>"]` (index.js:471-486) and unions the results,
+which is the right thing to do — the false statement is in OSM.
+
+`America/Sao_Paulo` resolves to 10 relations: nine whole states tagged
+directly (ES, RJ, RS, SC, PR, SP, MG, GO, DF) plus the dedicated
+[19510840](https://www.openstreetmap.org/relation/19510840)
+(`America/Sao_Paulo timezone`, `boundary=timezone`).
 
 Relation [54882](https://www.openstreetmap.org/relation/54882) (Espírito
-Santo, `admin_level=4`, `boundary=administrative`) carries
-`timezone=America/Sao_Paulo`, and among its members are the islands'
-12 nm territorial-sea rings:
+Santo, `admin_level=4`) is one of those nine, and among its members are the
+islands' 12 nm territorial-sea rings:
 
 - way [770537922](https://www.openstreetmap.org/way/770537922) — Trindade
   (centre -20.5057, -29.3202; r ≈ 0.222° ≈ 13.3 nm; closed, 167 nodes)
 - way [770537923](https://www.openstreetmap.org/way/770537923) — Martim Vaz
   (centre -20.4821, -28.8464; r ≈ 0.210° ≈ 12.6 nm; closed, 159 nodes)
 
-Both are tagged `admin_level=2 border_type=territorial
-boundary=administrative maritime=yes` — the same shape and tagging as the two
-existing members of the `America/Noronha` relation
-([15093973](https://www.openstreetmap.org/relation/15093973)): way
-`1135490008` (Fernando de Noronha) and way `1135410780` (São Pedro e São
-Paulo).
+So ES's `timezone=America/Sao_Paulo` tag asserts that *all* of Espírito Santo
+is UTC-3, which is false — the state administers two island groups that are
+legally UTC-2.
 
-So the islands land in UTC-3 because Espírito Santo's relation is tagged for
-that zone and its geometry includes them.
+### Why Fernando de Noronha works and this doesn't
 
-### Proposed fix (two halves — neither works alone)
+Brazilian OSM data uses two different conventions:
 
-1. **OSM:** add ways `770537922` and `770537923` as `outer` members of
-   relation `15093973`.
-2. **This repo:** in `timezones.json`, have `America/Sao_Paulo` subtract
-   `America/Noronha` after its `init`, following the same pattern
-   `America/Phoenix` already uses to subtract `America/Creston`:
+- **Pernambuco:** relation `303702` carries **no** `timezone` tag. Its
+  mainland is covered by the dedicated `America/Recife` relation
+  ([15093974](https://www.openstreetmap.org/relation/15093974) — the *only*
+  relation tagged `timezone=America/Recife`), and Fernando de Noronha by
+  `America/Noronha`. The state splits cleanly, and the output is correct.
+- **Espírito Santo / Rio Grande do Norte:** the state relation itself carries
+  the `timezone` tag, so it's all-or-nothing and no exception can be carved
+  out.
 
-   ```json
-   "America/Sao_Paulo": [
-     { "op": "init", "source": "overpass", "id": "America-Sao_Paulo-tz" },
-     { "op": "difference", "source": "overpass", "id": "America-Noronha-tz" }
-   ]
-   ```
+ES and RN are precisely the two states that Brazilian law splits, and both use
+the pattern that can't express a split.
 
-   This is also the same situation `America/Toronto` handles with a
-   `manual-polygon` difference described as "Remove Bahamas included in raw
-   OpenStreetMap relation" — a raw OSM relation that over-includes territory.
-   A `manual-polygon` box around the archipelago would work too, but
-   subtracting `America-Noronha-tz` stays correct on its own as the relation
-   evolves.
+### Proposed fix (OSM only — nothing needed in this repo)
 
-Doing only (1) makes both Overpass queries return geometry covering the
-islands, producing an `America/Noronha` ↔ `America/Sao_Paulo` overlap that
-has no entry in `expectedZoneOverlaps.json`. Doing only (2) changes nothing,
-since `America/Noronha` doesn't cover the islands yet.
+1. Remove `timezone=America/Sao_Paulo` from relation `54882` (Espírito Santo).
+2. Add ways `770537922` and `770537923` as `outer` members of relation
+   [15093973](https://www.openstreetmap.org/relation/15093973)
+   (`America/Noronha`).
 
-I'm happy to make the OSM edit, but wanted to agree on the approach first
-rather than push a change that breaks the build.
+This is the Pernambuco pattern, applied to ES. Mainland Espírito Santo stays
+in `America/Sao_Paulo` via `19510840`, which already covers it — I checked
+`is_in(lat,lon)->.a; rel(pivot.a)["timezone"]` at three points spread across
+the state (-18.55/-40.40, -21.10/-41.05, -19.40/-40.07) and `19510840`
+covers all three, while Trindade (-20.5076/-29.3217) is covered only by
+`54882`. So removing the tag doesn't open a hole.
+
+Result: islands → Noronha, mainland ES → Sao_Paulo, no overlap, no
+`difference` op, no config change here.
 
 ### Related: Atol das Rocas
 
 Changeset [176723059](https://www.openstreetmap.org/changeset/176723059)
-removed way `1135490007` (the territorial ring around Atol das Rocas) from
-the same relation, with the rationale that Rocas is administratively part of
-Rio Grande do Norte. That's the same class of problem: Rocas is legally UTC-2
-under the same law, but its ring sits inside the Rio Grande do Norte relation,
-so adding it to `America/Noronha` would produce the same kind of overlap
-unless the corresponding zone also subtracts `America/Noronha`.
+removed way `1135490007` (the territorial ring around Atol das Rocas) from the
+`America/Noronha` relation, on the grounds that Rocas is administratively part
+of Rio Grande do Norte.
 
-If the `difference` approach above is acceptable, it would fix both cases.
-Happy to scope this to just Trindade/Martim Vaz if you'd rather keep them
-separate.
+That's the same situation: RN (relation `301079`) carries
+`timezone=America/Fortaleza`, so adding Rocas to `America/Noronha` while RN
+stays tagged would create an overlap. The same two-step fix would apply —
+though `America/Fortaleza` currently pulls in five tagged states (RN, PB, CE,
+PI, MA) plus relation `19507366`, so whether the dedicated relation covers
+mainland RN would need checking first.
+
+Happy to make these OSM edits, but given the revert above I'd rather agree on
+the approach first.

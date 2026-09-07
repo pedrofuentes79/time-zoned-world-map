@@ -39,6 +39,16 @@ SOVEREIGN_ABBR = {
 }
 
 
+# Soberania asignada a mano, por encima del cruce con Natural Earth.
+# Natural Earth refleja el control efectivo; este mapa se hace desde la
+# posicion argentina, coherente con rotular el archipielago como Islas
+# Malvinas y no como Falkland Islands.
+SOVEREIGN_OVERRIDES = {
+    "Isla Gran Malvina": "ARGENTINA",
+    "Isla Soledad": "ARGENTINA",
+}
+
+
 def _norm(name: str) -> str:
     import unicodedata
     s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
@@ -83,7 +93,8 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             continue           # ya esta rotulada como pais
         taken.add(_norm(name))
         sov = sov_by_idx.get(i)
-        abbr = SOVEREIGN_ABBR.get(sov) if sov else None
+        abbr = SOVEREIGN_OVERRIDES.get(name) or (
+            SOVEREIGN_ABBR.get(sov) if sov else None)
         if abbr and _norm(abbr) == _norm(name):
             abbr = None        # la isla es el pais
         rank = int(r["SCALERANK"]) if pd.notna(r["SCALERANK"]) else 7

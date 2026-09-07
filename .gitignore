@@ -1,0 +1,14 @@
+# Datos descargados (~170 MB) y cache derivado: se regeneran con prep.py
+data/raw/
+data/cache/
+
+# Salidas del render
+out/
+
+.venv/
+__pycache__/
+*.pyc
+uv.lock
+
+# Imagenes de referencia guardadas a mano (pesadas, no son fuente del proyecto)
+*.png

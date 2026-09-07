@@ -1,0 +1,125 @@
+"""Colocacion de rotulos con deteccion de colisiones.
+
+Paises, islas y numeros de huso pasan todos por aca, porque compiten por
+el mismo espacio. Cuando cada capa se dibujaba por su cuenta, los nombres
+de islas caian sobre los de paises y el "+5 1/2" sobre "INDIA".
+
+Orden: primero se reservan los numeros de huso, que son el dato del mapa;
+despues los paises por superficie; al final las islas por SCALERANK.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import geopandas as gpd
+import matplotlib.patheffects as pe
+
+# Candidatos de desplazamiento, en multiplos de la altura de linea.
+OFFSETS = [
+    (0.0, 0.0),
+    (0.0, 1.2), (0.0, -1.2),
+    (1.0, 0.0), (-1.0, 0.0),
+    (0.9, 0.9), (-0.9, 0.9), (0.9, -0.9), (-0.9, -0.9),
+    (0.0, 2.4), (0.0, -2.4),
+    (2.0, 0.0), (-2.0, 0.0),
+    (1.8, 1.8), (-1.8, 1.8), (1.8, -1.8), (-1.8, -1.8),
+    (0.0, 3.8), (0.0, -3.8), (3.2, 0.0), (-3.2, 0.0),
+]
+
+# Cuerpo relativo de los paises, por escalon de superficie.
+COUNTRY_STEPS = (0.62, 0.78, 0.92, 1.06, 1.24)
+# Cuerpo relativo de las islas, por SCALERANK de Natural Earth (0 = Melanesia,
+# 7 = islote). Siempre por debajo de un pais: son informacion de detalle.
+ISLAND_BY_RANK = {0: 0.72, 1: 0.72, 2: 0.62, 3: 0.62,
+                  4: 0.54, 5: 0.54, 6: 0.48, 7: 0.44}
+
+
+@dataclass
+class Box:
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    def hits(self, other: "Box", pad: float = 0.0) -> bool:
+        return not (self.x1 + pad < other.x0 or other.x1 + pad < self.x0
+                    or self.y1 + pad < other.y0 or other.y1 + pad < self.y0)
+
+
+def text_box(cx: float, cy: float, text: str, size_u: float) -> Box:
+    w = len(text) * size_u * 0.60
+    return Box(cx - w / 2, cy - size_u / 2, cx + w / 2, cy + size_u / 2)
+
+
+def _country_factor(area: float, quantiles: list[float]) -> float:
+    for i, q in enumerate(quantiles):
+        if area <= q:
+            return COUNTRY_STEPS[i]
+    return COUNTRY_STEPS[-1]
+
+
+def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
+          overrides: dict[str, str], reserved: list[Box] | None = None) -> dict:
+    lo, hi = s.lat_limits if s.projection not in {"equal_earth", "robinson",
+                                                  "natural_earth"} else (-90.0, 90.0)
+    c = labels[labels["lat"].between(lo + 1, hi - 1)].copy()
+    if s.label_min_pop > 0 and "priority" in c:
+        c = c[(c["kind"] == "country") | (c["priority"] > 0)]
+    c = c.sort_values("priority", ascending=False)
+
+    proj = c.to_crs(crs)
+    xlim = ax.get_xlim()
+    span_x = abs(xlim[1] - xlim[0]) or 1.0
+    fig_w_in = ax.get_figure().get_size_inches()[0] * ax.get_position().width
+    unit = span_x / (fig_w_in * 72.0)      # un punto tipografico en datos
+
+    countries = c[c["kind"] == "country"]
+    quantiles = ([0.0] * 4 if countries.empty else
+                 countries["priority"].quantile([0.35, 0.60, 0.80, 0.93]).tolist())
+
+    placed: list[Box] = list(reserved or [])
+    stats = {"total": len(c), "placed": 0, "moved": 0, "dropped": 0}
+    halo = [pe.withStroke(linewidth=1.5, foreground=th["label_halo"])]
+
+    for (_, row), pt in zip(c.iterrows(), proj.geometry):
+        island = row["kind"] == "island"
+        if island:
+            size_pt = s.label_size_pt * ISLAND_BY_RANK.get(int(row["rank"]), 0.44)
+            name = str(row["name"])
+        else:
+            size_pt = s.label_size_pt * _country_factor(row["priority"], quantiles)
+            name = overrides.get(row["name"], row["name"]).upper()
+        size_u = size_pt * unit
+        sov = row["sovereign"] if isinstance(row["sovereign"], str) else None
+
+        spot = None
+        for i, (dx, dy) in enumerate(OFFSETS):
+            cx = pt.x + dx * size_u * 3.2
+            cy = pt.y + dy * size_u * 1.5
+            b = text_box(cx, cy, name, size_u)
+            boxes = [b]
+            if sov:
+                boxes.append(text_box(cx, cy - size_u * 1.15,
+                                      f"({sov})", size_u * 0.78))
+            if not any(bb.hits(p, pad=size_u * 0.16) for bb in boxes for p in placed):
+                spot = (cx, cy, boxes, i)
+                break
+        if spot is None:
+            stats["dropped"] += 1
+            continue
+
+        cx, cy, boxes, idx = spot
+        placed.extend(boxes)
+        stats["moved" if idx else "placed"] += 1
+        if idx:
+            ax.plot([pt.x, cx], [pt.y, cy], color=th["label"], linewidth=0.4,
+                    alpha=0.7, zorder=7)
+            ax.plot([pt.x], [pt.y], marker="o", markersize=0.9,
+                    color=th["label"], alpha=0.8, zorder=7)
+        ax.text(cx, cy, name, fontsize=size_pt, ha="center", va="center",
+                color=th["label"], zorder=8, path_effects=halo)
+        if sov:
+            ax.text(cx, cy - size_u * 1.15, f"({sov})", fontsize=size_pt * 0.78,
+                    ha="center", va="center", color=th["label"], alpha=0.8,
+                    zorder=8, path_effects=halo)
+    return stats

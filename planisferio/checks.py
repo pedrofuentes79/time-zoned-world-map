@@ -209,6 +209,20 @@ def _sovereign_overrides_applied() -> Result:
                   if not bad else ", ".join(bad))
 
 
+def _island_panels_resolve() -> Result:
+    """Cada archipielago nombrado debe encontrar islas y quedar sombreado."""
+    from .island_groups import GROUPS
+    path = CACHE / "island_panels.gpkg"
+    if not path.exists():
+        return Result("archipielagos sombreados", not GROUPS,
+                      "no hay panel generado")
+    have = set(gpd.read_file(path)["name"])
+    missing = [g[0] for g in GROUPS if g[0] not in have]
+    return Result("archipielagos sombreados", not missing,
+                  f"los {len(GROUPS)} de la tabla"
+                  if not missing else f"faltan {missing}")
+
+
 def _ruler_matches_map() -> Result:
     """La regla cubre 24 horas, igual que los 360 grados del mapa."""
     worst = 0.0
@@ -250,6 +264,7 @@ def run() -> bool:
         _fractional_zones_stay_local(land, sea),
         _named_territories_resolve(land, sea),
         _zone_fixes_applied(land),
+        _island_panels_resolve(),
         _sovereign_overrides_applied(),
         _ruler_matches_map(),
         _offsets_have_a_column(land),

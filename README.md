@@ -125,13 +125,17 @@ de "(INDONESIA)" sin agregar nada.
 
 ### Archipielagos
 
-Un grupo disperso se lee como puntos sueltos: Maldivas son 67 manchas de un
-milimetro sin nada que las relacione. Se agrupan las islas cercanas y se
-sombrea el conjunto con un panel tenue, como hacen los mapas de referencia.
+Un grupo disperso se lee como puntos sueltos: Maldivas son 66 manchas de un
+milimetro sin nada que las relacione. El panel tenue los agrupa.
 
-El umbral minimo de isla tiene que ser muy chico (0.00002 grados^2): los
-atolones de Maldivas, Chagos o la cadena noroeste de Hawai son diminutos, y
-son justo el caso que el panel viene a resolver.
+Cuales llevan panel se decide en `GROUPS`, no por agrupado automatico. Se
+intento al reves: con un radio de agrupado unico, subirlo para que entrara
+la cadena hawaiana entera (24 grados) hacia que los grupos chicos se
+fusionaran o superaran el tope de extension, y las Antillas desaparecian.
+No hay radio que sirva para Maldivas y para Hawai a la vez.
+
+El panel se ajusta a las islas reales que encuentra alrededor del punto: la
+tabla decide QUE se sombrea y los datos deciden DONDE.
 
 ### Invariantes
 

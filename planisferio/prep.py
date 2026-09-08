@@ -103,7 +103,9 @@ def build() -> None:
         cache_key.save("sea", key, sea)
     sea.to_file(CACHE / "zones_sea.gpkg", layer="zones", driver="GPKG")
     from .island_groups import build as build_groups
-    panels = build_groups(bands)
+    panels, missing = build_groups(bands)
+    if missing:
+        print(f"  aviso: archipielagos sin islas cerca: {', '.join(missing)}")
     if len(panels):
         panels.to_file(CACHE / "island_panels.gpkg", layer="panels",
                        driver="GPKG")

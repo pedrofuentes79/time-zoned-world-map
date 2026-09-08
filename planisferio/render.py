@@ -137,16 +137,14 @@ def _clip(gdf: gpd.GeoDataFrame, s: Style) -> gpd.GeoDataFrame:
     return out[~out.geometry.is_empty & out.geometry.notna()]
 
 
-def render(s: Style, outfile: str | None = None) -> Path:
+def map_layout(s: Style):
+    """Donde cae el mapa en la pagina, y que coordenadas proyectadas cubre.
+
+    Devuelve ((x, y, ancho, alto) en mm desde abajo-izquierda,
+              (minx, miny, maxx, maxy) en la proyeccion).
+    Lo usa el render y tambien el recorte por region.
+    """
     crs = PROJECTIONS[s.projection].format(lon0=s.lon0)
-    th = theme_of(s)
-    mm = 1 / 25.4
-
-    countries = gpd.read_file(CACHE / "countries.gpkg")
-    fig = plt.figure(figsize=(s.page_mm[0] * mm, s.page_mm[1] * mm))
-    fig.patch.set_facecolor(th["bg"])
-
-    # --- caja del mapa, ajustada al aspecto real de la proyeccion ---
     lo, hi = effective_limits(s)
     frame = gpd.GeoDataFrame(
         {"geometry": [box(s.lon0 - 179.999, lo, s.lon0 + 179.999, hi)]},
@@ -159,9 +157,23 @@ def render(s: Style, outfile: str | None = None) -> Path:
         h_mm, w_mm = box_h, box_h * aspect
     else:
         w_mm, h_mm = box_w, box_w / aspect
+    x_mm = (s.page_mm[0] - w_mm) / 2
+    y_mm = s.footer_mm + (box_h - h_mm) / 2
+    return (x_mm, y_mm, w_mm, h_mm), (minx, miny, maxx, maxy)
 
-    ax = fig.add_axes(((s.page_mm[0] - w_mm) / 2 / s.page_mm[0],
-                       (s.footer_mm + (box_h - h_mm) / 2) / s.page_mm[1],
+
+def render(s: Style, outfile: str | None = None) -> Path:
+    crs = PROJECTIONS[s.projection].format(lon0=s.lon0)
+    th = theme_of(s)
+    mm = 1 / 25.4
+
+    countries = gpd.read_file(CACHE / "countries.gpkg")
+    fig = plt.figure(figsize=(s.page_mm[0] * mm, s.page_mm[1] * mm))
+    fig.patch.set_facecolor(th["bg"])
+
+    # --- caja del mapa, ajustada al aspecto real de la proyeccion ---
+    (x_mm, y_mm, w_mm, h_mm), (minx, miny, maxx, maxy) = map_layout(s)
+    ax = fig.add_axes((x_mm / s.page_mm[0], y_mm / s.page_mm[1],
                        w_mm / s.page_mm[0], h_mm / s.page_mm[1]))
     ax.set_facecolor(th["bg"])
     ax.set_axis_off()

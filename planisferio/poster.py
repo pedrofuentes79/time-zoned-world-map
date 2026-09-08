@@ -44,12 +44,27 @@ def rasterize(svg: Path, dpi: int) -> Path | None:
     return png
 
 
+def _clean_stale(keep: str) -> None:
+    """Borra salidas de corridas anteriores.
+
+    Tener dos generaciones de archivos conviviendo en out/ hizo que se
+    revisara un mapa viejo creyendo que era el nuevo.
+    """
+    out = Path("out")
+    if not out.exists():
+        return
+    for f in out.iterdir():
+        if f.is_file() and not f.name.startswith(keep):
+            f.unlink()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--no-png", action="store_true")
     args = ap.parse_args()
 
+    _clean_stale("planisferio_a0")
     svg = render(A0, outfile="planisferio_a0")
     print(f"  vectorial: {svg} y {svg.with_suffix('.pdf')}")
     if not args.no_png:

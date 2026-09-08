@@ -23,9 +23,13 @@ Opciones del poster: `--dpi 300` para un PNG mas grande, `--no-png` para
 saltear el rasterizado. A0 a 200 dpi son 9362x6622 px y unos 7 MB; a 300 dpi
 son 139 Mpx, que muchos visores no abren comodos.
 
-Para mirar el resultado conviene el **PDF**, que es lo que va a imprenta y
-hace zoom sin perder nitidez (`evince out/planisferio_a0.pdf`). El SVG se
-abre bien en un navegador o en Inkscape, que ademas sirve para retocarlo.
+Cada corrida limpia `out/` antes de escribir: tener dos generaciones de
+archivos conviviendo llevo a revisar un mapa viejo creyendo que era el nuevo.
+
+Para mirarlo entero con zoom profundo, **Chromium** sobre el SVG o el PDF
+(`chromium out/planisferio_a0.svg`, ctrl+rueda para acercar): es vectorial,
+asi que no tiene tope de nitidez. Inkscape sirve igual y ademas permite
+retocar. Evince topea el zoom antes de que se lean los rotulos de 7 pt.
 QGIS no: esto ya es un grafico terminado, no datos geograficos.
 
 `prep.py` tarda unos minutos la primera vez por el cierre morfológico de

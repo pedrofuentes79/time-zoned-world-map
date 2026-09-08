@@ -65,6 +65,10 @@ class Style:
     ruler_local_time: bool = True   # hora local cuando en UTC son las 12:00
     offset_pt: float = 8.0
     offset_min_area: float = 0.0012  # fraccion del area del mapa
+    # Los husos fraccionarios llevan su numero aunque sean chicos: el
+    # rayado dice que son fraccionarios pero no cual fraccion, y obligar
+    # a ir a la regla por cada uno no sirve.
+    offset_min_area_frac: float = 0.00002
     projection: str = "miller"
     lon0: float = 0.0
     lat_limits: tuple[float, float] = (-60.0, 85.0)
@@ -459,7 +463,9 @@ def _offset_labels(ax, zones: gpd.GeoDataFrame, s: Style, th: dict) -> list:
     used: list = []
     parts = zones.explode(index_parts=False, ignore_index=True)
     parts["_a"] = parts.geometry.area
-    keep = parts[parts["_a"] >= map_area * s.offset_min_area]
+    frac = parts["std_hours"] != parts["std_hours"].astype(int)
+    keep = parts[(parts["_a"] >= map_area * s.offset_min_area)
+                 | (frac & (parts["_a"] >= map_area * s.offset_min_area_frac))]
     ymin, ymax = ylim
     step = (ymax - ymin) * (s.offset_repeat_deg / 180.0)
     for _, row in keep.iterrows():
@@ -478,10 +484,17 @@ def _offset_labels(ax, zones: gpd.GeoDataFrame, s: Style, th: dict) -> list:
             spots.append(piece.representative_point())
         if not spots:
             spots = [g.representative_point()]
+        small = row["_a"] < map_area * s.offset_min_area
         for pt in spots:
             lab = offset_label(float(row["std_hours"]))
-            used.append(text_box(pt.x, pt.y, lab, s.offset_pt * unit))
-            ax.text(pt.x, pt.y, lab, fontsize=s.offset_pt, ha="center",
+            tx, ty = pt.x, pt.y
+            if small:
+                # No entra adentro: se corre afuera y se ata con una guia.
+                ty = g.bounds[3] + (ylim[1] - ylim[0]) * 0.018
+                ax.plot([pt.x, tx], [pt.y, ty], color=th["zone_edge"],
+                        linewidth=0.5, alpha=0.8, zorder=8.8)
+            used.append(text_box(tx, ty, lab, s.offset_pt * unit))
+            ax.text(tx, ty, lab, fontsize=s.offset_pt, ha="center",
                     va="center", color=th["zone_edge"], fontweight="bold",
                     zorder=9, path_effects=[pe2.withStroke(
                         linewidth=2.0, foreground=th["label_halo"])])

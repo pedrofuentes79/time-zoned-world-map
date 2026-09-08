@@ -189,6 +189,26 @@ def _near_own_land(row, parts: gpd.GeoDataFrame, sindex) -> bool:
     return False
 
 
+def _borders_other_zone(geom, parts: gpd.GeoDataFrame, sindex) -> bool:
+    """El trozo limita por tierra con otro huso.
+
+    Entonces no es una isla sino un enclave dentro de una masa continental,
+    y no le corresponde recuadro. Eucla (UTC+8:45) limita con UTC+8 y
+    UTC+9:30; su recuadro le metia una caja en la Gran Bahia Australiana.
+    """
+    x0, y0, x1, y1 = geom.bounds
+    d = 0.15
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        for j in sindex.intersection((x0 - d, y0 - d, x1 + d, y1 + d)):
+            other = parts.iloc[j]
+            if other.geometry.equals(geom):
+                continue
+            if other.geometry.distance(geom) < d:
+                return True
+    return False
+
+
 def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
     """Recuadros automaticos para islas chicas, y los casos nombrados.
 
@@ -209,6 +229,7 @@ def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
     small = parts[(parts["_area"] >= ISLAND_MIN_DEG2)
                   & (parts["_area"] <= ISLAND_MAX_DEG2)]
     sindex = parts.sindex
+    parts_r = parts.reset_index(drop=True)
     for _, r in small.iterrows():
         h = float(r["std_hours"])
         if any(r.geometry.equals(g) for g in skip_geoms):
@@ -219,6 +240,8 @@ def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
             continue                      # ya cae dentro de su banda
         if _near_own_land(r, parts, sindex):
             continue                      # su continente esta al lado
+        if _borders_other_zone(r.geometry, parts_r, sindex):
+            continue                      # enclave continental, no una isla
         boxes.setdefault(h, []).append(
             box(x0 - ISLAND_PAD, max(y0 - ISLAND_PAD, lat[0]),
                 x1 + ISLAND_PAD, min(y1 + ISLAND_PAD, lat[1])))

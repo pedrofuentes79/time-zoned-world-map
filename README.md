@@ -14,7 +14,7 @@ Todo en español. Las Malvinas se llaman Islas Malvinas.
 
 ```bash
 uv sync
-./scripts/download.sh          # ~170 MB a data/raw/
+./scripts/download.sh          # ~800 MB a data/raw/
 uv run python -m planisferio.prep     # construye data/cache/ y valida
 uv run python -m planisferio.poster   # SVG + PDF + PNG a 200 dpi
 ```
@@ -42,7 +42,8 @@ sus parámetros y su código, así que las corridas siguientes son rápidas.
 |---|---|---|
 | Reglas horarias y DST | tzdata, vía `zoneinfo` | dominio público |
 | Límites de husos | [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) 2026c | ODbL |
-| Costas, países, islas, mares | Natural Earth 10m | dominio público |
+| Costas, países, mares | Natural Earth 10m | dominio público |
+| Nombres de islas | [GeoNames](https://download.geonames.org/export/dump/) | CC BY 4.0 |
 
 Los offsets y el horario de verano **no están escritos en el código**: se
 derivan de tzdata en tiempo de ejecución. Cuando un país cambia sus reglas,
@@ -83,6 +84,21 @@ Hay dos tablas, y la distinción importa:
 - `FIXES` en `zone_fixes.py` corrige **el dato** cuando la fuente está mal.
   Hoy tiene Trindade y Martim Vaz, que OSM ubica en `America/Sao_Paulo`
   cuando la ley brasileña las pone en el huso de Fernando de Noronha.
+
+### Rotulos: desde la geometria, no desde el gazetteer
+
+GeoNames tiene 175.000 islas. De esas, 78.000 caen dentro de masas
+continentales (islas de rio, islotes costeros) y la mayoria del resto no se
+ve a esta escala. El mapa aguanta unas 2.000 etiquetas: a 5 pt, con las
+etiquetas cubriendo el 12% del papel, entran unas 4.000, y eso ya es denso.
+
+Asi que se recorre al reves: cada poligono de isla de entre 0.01 y 5 grados
+cuadrados recibe **una** etiqueta, con el mejor nombre que GeoNames tenga
+adentro. Menos de 0.01 mide menos de 1 mm a A0.
+
+La soberania se muestra solo en las dependencias, donde ADMIN y SOVEREIGNT
+difieren en Natural Earth. Ponerla siempre llenaba el archipielago indonesio
+de "(INDONESIA)" sin agregar nada.
 
 ### Invariantes
 

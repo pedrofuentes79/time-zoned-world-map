@@ -79,6 +79,97 @@ def _norm(name: str) -> str:
     return s.lower().strip()
 
 
+# Un poligono mas chico que esto mide menos de 1 mm a A0: rotularlo es
+# poner un nombre sobre nada.
+ISLAND_MIN_DEG2 = 0.01
+# Por encima de esto es un continente o una isla mayor, que ya viene
+# nombrada por Natural Earth.
+ISLAND_MAX_DEG2 = 5.0
+
+
+def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
+                           rows_so_far: list[dict]) -> list[dict]:
+    """Una etiqueta por poligono de isla, con el mejor nombre de GeoNames.
+
+    Se va desde la geometria y no desde el gazetteer: GeoNames tiene 175.000
+    islas, de las cuales 78.000 caen dentro de masas continentales (islas de
+    rio, islotes costeros) y la mayoria del resto no se ve a esta escala. El
+    mapa aguanta unas 2.000 etiquetas en total, asi que lo que manda es que
+    el poligono exista y se vea.
+    """
+    import pandas as pd
+
+    from .geonames import build_cache
+    gn = build_cache()
+    parts = land.explode(index_parts=False, ignore_index=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        parts["_area"] = parts.geometry.area
+    parts = parts[(parts["_area"] >= ISLAND_MIN_DEG2)
+                  & (parts["_area"] <= ISLAND_MAX_DEG2)].reset_index(drop=True)
+
+    pts = gpd.GeoDataFrame(
+        gn.copy(), geometry=gpd.points_from_xy(gn["lon"], gn["lat"]),
+        crs="EPSG:4326")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        j = gpd.sjoin(pts, parts[["_area", "geometry"]], how="inner",
+                      predicate="within")
+    # Mejor candidato por poligono: primero el que tiene nombre en espanol
+    # propio, despues archipielago sobre isla suelta.
+    j["has_es"] = (j["name_es"] != j["name"]).astype(int)
+    j = j.sort_values(["index_right", "has_es", "rank_code"],
+                      ascending=[True, False, True])
+    best = j.groupby("index_right").first()
+
+    # ADMIN y SOVEREIGNT solo difieren en las dependencias. Mostrar la
+    # soberania cuando coinciden llenaba el archipielago indonesio de
+    # "(INDONESIA)" sin agregar informacion.
+    admin = gpd.read_file(RAW / "ne_10m_admin_0_countries.zip")[
+        ["SOVEREIGNT", "ADMIN", "geometry"]]
+    reps = parts.geometry.representative_point()
+    rep_gdf = gpd.GeoDataFrame({"i": range(len(parts))},
+                               geometry=reps.to_numpy(), crs=parts.crs)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        sov = gpd.sjoin(rep_gdf, admin, how="left", predicate="within")
+    sov_by_i = {i: (so if so != ad else None)
+                for i, so, ad in zip(sov["i"], sov["SOVEREIGNT"], sov["ADMIN"])}
+
+    # Un poligono que ya tiene rotulo no recibe otro. Sin esto salian
+    # "Isla Gran Nicobar" (Natural Earth) y "Great Nicobar Island"
+    # (GeoNames) sobre la misma isla.
+    placed_pts = gpd.GeoDataFrame(
+        {"j": range(len(rows_so_far))},
+        geometry=gpd.points_from_xy([r["lon"] for r in rows_so_far],
+                                    [r["lat"] for r in rows_so_far]),
+        crs="EPSG:4326")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        occupied = set(gpd.sjoin(placed_pts, parts[["geometry"]], how="inner",
+                                 predicate="within")["index_right"])
+
+    rows = []
+    for i, r in best.iterrows():
+        if i in occupied:
+            continue
+        name = r["name_es"]
+        if not name or _norm(name) in taken:
+            continue
+        taken.add(_norm(name))
+        abbr = SOVEREIGN_ABBR.get(sov_by_i.get(i))
+        if abbr and _norm(abbr) == _norm(name):
+            abbr = None
+        pt = reps.iloc[i]
+        area = float(parts.at[i, "_area"])
+        rows.append({
+            "kind": "island", "name": name, "sovereign": abbr,
+            "priority": float(area), "lon": pt.x, "lat": pt.y,
+            "rank": 4 if area > 0.5 else (5 if area > 0.05 else 6),
+        })
+    return rows
+
+
 def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     rows = []
 
@@ -102,7 +193,7 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # geometria contra el, desfasando ids y puntos. Asi Hainan salia noruega.
     reg = reg[reg["FEATURECLA"].isin(["Island", "Island group"])].reset_index(drop=True)
     admin = gpd.read_file(RAW / "ne_10m_admin_0_countries.zip")[
-        ["SOVEREIGNT", "NAME_ES", "geometry"]]
+        ["SOVEREIGNT", "ADMIN", "NAME_ES", "geometry"]]
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -110,7 +201,11 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         pt_gdf = gpd.GeoDataFrame({"idx": reg.index}, geometry=pts, crs=reg.crs)
         joined = gpd.sjoin(pt_gdf, admin, how="left", predicate="within")
 
-    sov_by_idx = dict(zip(joined["idx"], joined["SOVEREIGNT"]))
+    # Solo se muestra la soberania de las dependencias: ADMIN y SOVEREIGNT
+    # difieren ahi. En una isla del propio pais no agrega nada.
+    sov_by_idx = {i: (so if so != ad else None)
+                  for i, so, ad in zip(joined["idx"], joined["SOVEREIGNT"],
+                                       joined["ADMIN"])}
     for (i, r), pt in zip(reg.iterrows(), pts):
         name = r["NAME_ES"] or r["NAME"]
         if not name or _norm(name) in taken:
@@ -134,6 +229,9 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         taken.add(_norm(name))
         rows.append({"kind": "island", "name": name, "sovereign": sov,
                      "priority": 3.0, "lon": lon, "lat": lat, "rank": 5})
+
+    land = gpd.read_file("data/cache/zones_land.gpkg")
+    rows += _islands_from_geometry(land, taken, rows)
 
     df = pd.DataFrame(rows)
     return gpd.GeoDataFrame(

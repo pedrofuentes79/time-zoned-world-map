@@ -20,4 +20,8 @@ done
 curl -sL -o ne_10m_admin_0_countries.zip \
   "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_countries.zip"
 
+echo ">> GeoNames (nombres de islas; ~625 MB)"
+curl -sL -o geonames_all.zip https://download.geonames.org/export/dump/allCountries.zip
+curl -sL -o geonames_alt.zip https://download.geonames.org/export/dump/alternateNamesV2.zip
+
 echo "listo"

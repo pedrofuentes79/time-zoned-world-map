@@ -85,6 +85,39 @@ ISLAND_MIN_DEG2 = 0.01
 # Por encima de esto es un continente o una isla mayor, que ya viene
 # nombrada por Natural Earth.
 ISLAND_MAX_DEG2 = 5.0
+# Que isla merece rotulo. El archipielago patagonico, el delta del Amazonas
+# y la costa noruega aportaban solos cientos de nombres sobre manchas de un
+# milimetro, todas pegadas a su continente.
+#
+# Se muestra si cumple alguna de estas tres:
+#   1. es grande en terminos absolutos
+#   2. domina su vecindario: no hay tierra mucho mayor a la vuelta
+#   3. GeoNames le registra un nombre en espanol propio, que solo tienen
+#      5.657 de 175.000 y funciona como senal de notoriedad
+#
+# Ninguna alcanza sola. Por tamano se cuelan las patagonicas; por dominancia
+# se pierden Chiloe, Sicilia y Vancouver, pegadas a un continente enorme; y
+# la notoriedad falla justo donde el nombre local ya es espanol.
+ISLAND_BIG_DEG2 = 0.75
+DOMINANCE_RADIUS_DEG = 1.0
+DOMINANCE_RATIO = 3.0
+
+
+def _dominates(i: int, geom, area: float, parts: gpd.GeoDataFrame,
+               sindex) -> bool:
+    """No hay tierra mucho mas grande a la vuelta."""
+    d = DOMINANCE_RADIUS_DEG
+    x0, y0, x1, y1 = geom.bounds
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        for j in sindex.intersection((x0 - d, y0 - d, x1 + d, y1 + d)):
+            if j == i:
+                continue
+            other = parts.iloc[j]
+            if (other["_area"] >= area * DOMINANCE_RATIO
+                    and other.geometry.distance(geom) < d):
+                return False
+    return True
 
 
 def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
@@ -105,19 +138,32 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         parts["_area"] = parts.geometry.area
-    parts = parts[(parts["_area"] >= ISLAND_MIN_DEG2)
-                  & (parts["_area"] <= ISLAND_MAX_DEG2)].reset_index(drop=True)
+    all_parts = parts.reset_index(drop=True)
+    all_ix = all_parts.sindex
 
+    gn["has_es"] = gn["name_es"] != gn["name"]
     pts = gpd.GeoDataFrame(
         gn.copy(), geometry=gpd.points_from_xy(gn["lon"], gn["lat"]),
         crs="EPSG:4326")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        notable = set(gpd.sjoin(pts[pts["has_es"]], all_parts[["geometry"]],
+                                how="inner", predicate="within")["index_right"])
+
+    sel = [i for i, (g, a) in enumerate(zip(all_parts.geometry,
+                                            all_parts["_area"]))
+           if ISLAND_MIN_DEG2 <= a <= ISLAND_MAX_DEG2
+           and (a >= ISLAND_BIG_DEG2 or i in notable
+                or _dominates(i, g, a, all_parts, all_ix))]
+    parts = all_parts.iloc[sel].reset_index(drop=True)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         j = gpd.sjoin(pts, parts[["_area", "geometry"]], how="inner",
                       predicate="within")
     # Mejor candidato por poligono: primero el que tiene nombre en espanol
     # propio, despues archipielago sobre isla suelta.
-    j["has_es"] = (j["name_es"] != j["name"]).astype(int)
+    j["has_es"] = j["has_es"].astype(int)
     j = j.sort_values(["index_right", "has_es", "rank_code"],
                       ascending=[True, False, True])
     best = j.groupby("index_right").first()

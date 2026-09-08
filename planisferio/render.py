@@ -60,6 +60,8 @@ class Style:
     ocean_pt: float = 9.0
     dateline: bool = True
     dateline_w: float = 1.5
+    notes: bool = True
+    note_pt: float = 6.0
     dateline_label: bool = True
     dateline_text: str = "LÍNEA INTERNACIONAL DE CAMBIO DE FECHA"
     ruler_local_time: bool = True   # hora local cuando en UTC son las 12:00
@@ -461,6 +463,8 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
                             linewidth=s.zone_edge_w, alpha=0.95, zorder=5)
 
     reserved = _offset_labels(ax, z, s, th) if s.zone_offsets else []
+    if s.notes:
+        reserved = reserved + _notes(ax, crs, s, th)
     ax._reserved_boxes = reserved
 
 
@@ -619,3 +623,34 @@ def _ocean_names(ax, crs, s: Style, th: dict) -> None:
                 zorder=6.5, fontweight="normal",
                 path_effects=[pe3.withStroke(linewidth=1.8,
                                              foreground=th["label_halo"])])
+
+
+def _notes(ax, crs, s: Style, th: dict) -> list:
+    """Notas explicativas. Reservan su espacio para que ningun rotulo
+    de pais o isla se les encime."""
+    import matplotlib.patheffects as pe6
+    from .labels import text_box
+    from .notes import NOTES
+
+    lo, hi = effective_limits(s)
+    rows = [(t, x, y) for t, x, y in NOTES if lo + 2 < y < hi - 2]
+    if not rows:
+        return []
+    pts = gpd.GeoSeries(gpd.points_from_xy([r[1] for r in rows],
+                                           [r[2] for r in rows]),
+                        crs="EPSG:4326").to_crs(crs)
+    xlim = ax.get_xlim()
+    fig_w_in = ax.get_figure().get_size_inches()[0] * ax.get_position().width
+    unit = abs(xlim[1] - xlim[0]) / (fig_w_in * 72.0)
+    used = []
+    for (text, _, _), pt in zip(rows, pts):
+        lines = text.split("\n")
+        size_u = s.note_pt * unit
+        for i, line in enumerate(lines):
+            used.append(text_box(pt.x, pt.y - i * size_u * 1.25, line, size_u))
+        ax.text(pt.x, pt.y, text, fontsize=s.note_pt, ha="center", va="top",
+                color=th["label"], style="italic", linespacing=1.35,
+                zorder=8.6, alpha=0.9,
+                path_effects=[pe6.withStroke(linewidth=1.8,
+                                             foreground=th["label_halo"])])
+    return used

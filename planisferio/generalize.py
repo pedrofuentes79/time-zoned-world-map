@@ -108,6 +108,7 @@ TERRITORIES = [
     # UTC+5:30 no tiene banda propia y comparte color con la banda de UTC+5
     # donde caen: sin recuadro se leen como si fueran +5.
     ("Islas Laquedivas",       72.64,   10.57,   5.5, "box"),
+    ("Islas Cocos",            96.87,  -12.17,   6.5, "box"),
 ]
 
 

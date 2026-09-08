@@ -61,6 +61,7 @@ EXTRA_LABELS = [
     ("Tristán de Acuña", "R.U.", -12.28, -37.11),
     ("Isla Gough",       "R.U.",  -9.88, -40.32),
     ("Lord Howe",        "AUSTR.", 159.08, -31.55),
+    ("Islas Cocos",      "AUSTR.",  96.87, -12.17),
     # Islas oceanicas brasilenas, todas en UTC-2
     ("Fernando de Noronha", "BRASIL", -32.42,  -3.86),
     ("Trindade",            "BRASIL", -29.33, -20.57),

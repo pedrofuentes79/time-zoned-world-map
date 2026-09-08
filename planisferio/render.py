@@ -11,6 +11,7 @@ import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import shapely
 from matplotlib.patches import Rectangle
 from shapely.geometry import LineString, Point, box
 
@@ -146,12 +147,29 @@ def effective_limits(s: Style) -> tuple[float, float]:
     return lo, hi
 
 
+# Las bandas teoricas y los recuadros son rectangulos de cuatro vertices.
+# Proyectados, sus lados se dibujan como rectas entre esas cuatro esquinas,
+# no como el meridiano curvo real: en Equal Earth eso da 33% menos de area.
+# Densificar agrega vertices intermedios para que el borde siga la curva.
+# Las cilindricas no lo necesitan: ahi meridianos y paralelos son rectos.
+DENSIFY_DEG = 1.0
+
+
+def _densify(gdf: gpd.GeoDataFrame, s: Style) -> gpd.GeoDataFrame:
+    if s.projection not in PSEUDOCYLINDRICAL:
+        return gdf
+    out = gdf.copy()
+    out["geometry"] = shapely.segmentize(out.geometry.to_numpy(), DENSIFY_DEG)
+    return out
+
+
 def _clip(gdf: gpd.GeoDataFrame, s: Style) -> gpd.GeoDataFrame:
     lo, hi = effective_limits(s)
     clipper = box(s.lon0 - 179.999, lo, s.lon0 + 179.999, hi)
     out = gdf.copy()
     out["geometry"] = out.geometry.intersection(clipper)
-    return out[~out.geometry.is_empty & out.geometry.notna()]
+    out = out[~out.geometry.is_empty & out.geometry.notna()]
+    return _densify(out, s)
 
 
 def map_layout(s: Style):
@@ -163,9 +181,9 @@ def map_layout(s: Style):
     """
     crs = PROJECTIONS[s.projection].format(lon0=s.lon0)
     lo, hi = effective_limits(s)
-    frame = gpd.GeoDataFrame(
+    frame = _densify(gpd.GeoDataFrame(
         {"geometry": [box(s.lon0 - 179.999, lo, s.lon0 + 179.999, hi)]},
-        crs="EPSG:4326").to_crs(crs)
+        crs="EPSG:4326"), s).to_crs(crs)
     minx, miny, maxx, maxy = frame.total_bounds
     box_w = s.page_mm[0] - 2 * s.margin_mm
     box_h = s.page_mm[1] - s.footer_mm - s.header_mm
@@ -619,7 +637,8 @@ def _clip_lines(gdf: gpd.GeoDataFrame, s: Style) -> gpd.GeoDataFrame:
     clipper = box(s.lon0 - 179.999, lo, s.lon0 + 179.999, hi)
     out = gdf.copy()
     out["geometry"] = out.geometry.intersection(clipper)
-    return out[~out.geometry.is_empty & out.geometry.notna()]
+    out = out[~out.geometry.is_empty & out.geometry.notna()]
+    return _densify(out, s)
 
 
 def _ocean_names(ax, crs, s: Style, th: dict) -> None:

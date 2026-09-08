@@ -10,8 +10,7 @@ son 139 Mpx, que muchos visores no abren comodos.
 from __future__ import annotations
 
 import argparse
-import shutil
-import subprocess
+import time
 from pathlib import Path
 
 from .render import Style, render
@@ -30,20 +29,6 @@ A0 = Style(
 )
 
 
-def rasterize(svg: Path, dpi: int) -> Path | None:
-    if shutil.which("inkscape") is None:
-        print("  aviso: sin inkscape, no se genera PNG")
-        return None
-    png = svg.with_suffix(".png")
-    subprocess.run(
-        ["inkscape", "--export-type=png", f"--export-dpi={dpi}",
-         f"--export-filename={png}", str(svg)],
-        check=True, capture_output=True)
-    mb = png.stat().st_size / 1e6
-    print(f"  PNG a {dpi} dpi: {png} ({mb:.0f} MB)")
-    return png
-
-
 def _clean_stale(keep: str) -> None:
     """Borra salidas de corridas anteriores.
 
@@ -60,15 +45,21 @@ def _clean_stale(keep: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dpi", type=int, default=200)
-    ap.add_argument("--no-png", action="store_true")
+    ap.add_argument("--formats", default="png,pdf",
+                    help="png, pdf, svg separados por coma")
+    # 400 dpi: a 200 una etiqueta de 2 pt medía 6 px de alto y salía como
+    # manchón gris. El PDF no tiene tope y siempre es el mejor para detalle.
+    ap.add_argument("--dpi", type=int, default=400)
     args = ap.parse_args()
 
+    fmts = tuple(f.strip() for f in args.formats.split(",") if f.strip())
     _clean_stale("planisferio_a0")
-    svg = render(A0, outfile="planisferio_a0")
-    print(f"  vectorial: {svg} y {svg.with_suffix('.pdf')}")
-    if not args.no_png:
-        rasterize(svg, args.dpi)
+    t = time.time()
+    render(A0, outfile="planisferio_a0", formats=fmts, dpi=args.dpi)
+    for f in fmts:
+        p = Path("out") / f"planisferio_a0.{f}"
+        print(f"  {p}  {p.stat().st_size / 1e6:.0f} MB")
+    print(f"  {time.time() - t:.0f}s")
 
 
 if __name__ == "__main__":

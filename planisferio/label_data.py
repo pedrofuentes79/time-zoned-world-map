@@ -150,12 +150,19 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
         notable = set(gpd.sjoin(pts[pts["has_es"]], all_parts[["geometry"]],
                                 how="inner", predicate="within")["index_right"])
 
-    sel = [i for i, (g, a) in enumerate(zip(all_parts.geometry,
-                                            all_parts["_area"]))
-           if ISLAND_MIN_DEG2 <= a <= ISLAND_MAX_DEG2
-           and (a >= ISLAND_BIG_DEG2 or i in notable
-                or _dominates(i, g, a, all_parts, all_ix))]
+    # Las que no pasan el corte no se descartan: van en cuerpo minusculo,
+    # como capa de detalle. De lejos el mapa se lee limpio; de cerca
+    # aparecen los nombres.
+    sel, minor = [], set()
+    for i, (g, a) in enumerate(zip(all_parts.geometry, all_parts["_area"])):
+        if not (ISLAND_MIN_DEG2 <= a <= ISLAND_MAX_DEG2):
+            continue
+        sel.append(i)
+        if not (a >= ISLAND_BIG_DEG2 or i in notable
+                or _dominates(i, g, a, all_parts, all_ix)):
+            minor.add(i)
     parts = all_parts.iloc[sel].reset_index(drop=True)
+    minor_local = {k for k, i in enumerate(sel) if i in minor}
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -211,7 +218,8 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
         rows.append({
             "kind": "island", "name": name, "sovereign": abbr,
             "priority": float(area), "lon": pt.x, "lat": pt.y,
-            "rank": 4 if area > 0.5 else (5 if area > 0.05 else 6),
+            "rank": 8 if i in minor_local else (
+                4 if area > 0.5 else (5 if area > 0.05 else 6)),
         })
     return rows
 

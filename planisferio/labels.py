@@ -30,8 +30,14 @@ OFFSETS = [
 COUNTRY_STEPS = (0.62, 0.78, 0.92, 1.06, 1.24)
 # Cuerpo relativo de las islas, por SCALERANK de Natural Earth (0 = Melanesia,
 # 7 = islote). Siempre por debajo de un pais: son informacion de detalle.
+# El rank 8 es la capa de detalle: islas menores, en cuerpo minusculo.
+# A A0 son ~0.9 mm de altura: invisibles de lejos, legibles de cerca.
 ISLAND_BY_RANK = {0: 0.72, 1: 0.72, 2: 0.62, 3: 0.62,
-                  4: 0.54, 5: 0.54, 6: 0.48, 7: 0.44}
+                  4: 0.54, 5: 0.54, 6: 0.48, 7: 0.44, 8: 0.26}
+# La capa de detalle ademas retrocede en tono: achicar sola no alcanza,
+# apinadas formaban una masa gris que se leia como ruido.
+DETAIL_RANK = 8
+DETAIL_ALPHA = 0.45
 
 
 @dataclass
@@ -114,13 +120,17 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
         cx, cy, boxes, idx = spot
         placed.extend(boxes)
         stats["moved" if idx else "placed"] += 1
-        if idx:
+        # La capa de detalle no lleva guia: a ese cuerpo la linea pesa mas
+        # que el nombre.
+        if idx and not (island and int(row["rank"]) >= 8):
             ax.plot([pt.x, cx], [pt.y, cy], color=th["label"], linewidth=0.4,
                     alpha=0.7, zorder=7)
             ax.plot([pt.x], [pt.y], marker="o", markersize=0.9,
                     color=th["label"], alpha=0.8, zorder=7)
+        detail = island and int(row["rank"]) >= DETAIL_RANK
         ax.text(cx, cy, name, fontsize=size_pt, ha="center", va="center",
-                color=th["label"], zorder=8, path_effects=halo)
+                color=th["label"], zorder=8, path_effects=halo,
+                alpha=DETAIL_ALPHA if detail else 1.0)
         if sov:
             ax.text(cx, cy - size_u * 1.15, f"({sov})", fontsize=size_pt * 0.78,
                     ha="center", va="center", color=th["label"], alpha=0.8,

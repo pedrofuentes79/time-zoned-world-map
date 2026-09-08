@@ -16,12 +16,14 @@ Todo en español. Las Malvinas se llaman Islas Malvinas.
 uv sync
 ./scripts/download.sh          # ~800 MB a data/raw/
 uv run python -m planisferio.prep     # construye data/cache/ y valida
-uv run python -m planisferio.poster   # SVG + PDF + PNG a 200 dpi
+uv run python -m planisferio.poster   # PNG a 400 dpi + PDF
 ```
 
-Opciones del poster: `--dpi 300` para un PNG mas grande, `--no-png` para
-saltear el rasterizado. A0 a 200 dpi son 9362x6622 px y unos 7 MB; a 300 dpi
-son 139 Mpx, que muchos visores no abren comodos.
+Opciones: `--formats png,pdf,svg` y `--dpi`. A0 a 400 dpi son 18724x13244 px
+y unos 20 MB; a 200 dpi una etiqueta de 2 pt mide 6 px de alto y sale como
+manchon gris.
+
+Con los caches calientes: `prep` ~16 s, `poster` ~40 s.
 
 Cada corrida limpia `out/` antes de escribir: tener dos generaciones de
 archivos conviviendo llevo a revisar un mapa viejo creyendo que era el nuevo.
@@ -32,9 +34,13 @@ asi que no tiene tope de nitidez. Inkscape sirve igual y ademas permite
 retocar. Evince topea el zoom antes de que se lean los rotulos de 7 pt.
 QGIS no: esto ya es un grafico terminado, no datos geograficos.
 
-`prep.py` tarda unos minutos la primera vez por el cierre morfológico de
-las costas; el resultado queda cacheado con una huella de sus entradas,
-sus parámetros y su código, así que las corridas siguientes son rápidas.
+`prep.py` tarda unos minutos la primera vez: el recorte de la capa de tierra
+y el cierre morfológico de las costas son los dos pasos caros. Ambos se
+cachean con una huella de sus entradas, sus parámetros y su código.
+
+La clave del cache del mar se encadena con la de la tierra en vez de hashear
+su geometría: al volver del gpkg la precisión cambia y la huella no coincidía,
+así que el cache del mar fallaba justo cuando el de tierra acertaba.
 
 ## Fuentes
 

@@ -164,7 +164,8 @@ def map_layout(s: Style):
     return (x_mm, y_mm, w_mm, h_mm), (minx, miny, maxx, maxy)
 
 
-def render(s: Style, outfile: str | None = None) -> Path:
+def render(s: Style, outfile: str | None = None,
+           formats: tuple[str, ...] = ("svg", "pdf"), dpi: int = 400) -> Path:
     crs = PROJECTIONS[s.projection].format(lon0=s.lon0)
     th = theme_of(s)
     mm = 1 / 25.4
@@ -209,17 +210,19 @@ def render(s: Style, outfile: str | None = None) -> Path:
     _chrome(fig, s, ax, th)
 
     OUT.mkdir(exist_ok=True)
-    path = OUT / f"{outfile or 'planisferio'}.svg"
-    fig.savefig(path, format="svg", facecolor=th["bg"])
-    fig.savefig(path.with_suffix(".pdf"), format="pdf", facecolor=th["bg"])
+    stem = OUT / (outfile or "planisferio")
+    for fmt in formats:
+        out = stem.with_suffix(f".{fmt}")
+        # El PNG sale directo de matplotlib: pasar por Inkscape obliga a
+        # escribir un SVG de 44 MB y volver a parsearlo, y tarda mas.
+        kw = {"dpi": dpi} if fmt == "png" else {}
+        fig.savefig(out, format=fmt, facecolor=th["bg"], **kw)
     plt.close(fig)
-    return path
+    return stem.with_suffix(f".{formats[0]}")
 
 def _paint_bands(ax, bands, crs, s: Style) -> None:
-    for _, row in bands.iterrows():
-        gpd.GeoSeries([row.geometry], crs=crs).plot(
-            ax=ax, color=band_color(row["std_hours"], s),
-            alpha=s.band_alpha, linewidth=0, zorder=1)
+    cols = [band_color(h, s) for h in bands["std_hours"]]
+    bands.plot(ax=ax, color=cols, alpha=s.band_alpha, linewidth=0, zorder=1)
 
 
 def _paint_dst(ax, crs, s: Style, th: dict) -> None:
@@ -409,29 +412,25 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
             cells.append(box(west, lo, east, hi))
             tints.append(CIA_BAND_A if k % 2 == 0 else CIA_BAND_B)
         bands = gpd.GeoDataFrame({"geometry": cells}, crs="EPSG:4326").to_crs(crs)
-        for geom, tint in zip(bands.geometry, tints):
-            gpd.GeoSeries([geom], crs=crs).plot(
-                ax=ax, color=tint, linewidth=0, zorder=0.5,
-                alpha=s.band_tint_alpha if cia else 1.0)
+        bands.plot(ax=ax, color=tints, linewidth=0, zorder=0.5,
+                   alpha=s.band_tint_alpha if cia else 1.0)
 
     # 2a. Husos nauticos: continuan la columna de color sobre el mar, mas
     # claros para que la tierra siga leyendose como tierra.
+    # Una sola llamada por capa: dibujar poligono por poligono es ~5 veces
+    # mas lento, y aca son decenas de husos por capa.
     sea_z = None
     if s.sea_zones:
         sea_z = _clip(gpd.read_file(CACHE / "zones_sea.gpkg"), s).to_crs(crs)
-        for _, row in sea_z.iterrows():
-            h = float(row["std_hours"])
-            base = cycle_color(h) if cia else zone_color(h, s.theme)
-            gpd.GeoSeries([row.geometry], crs=crs).plot(
-                ax=ax, color=lighten(base, s.sea_fade), linewidth=0, zorder=0.6)
+        cols = [lighten(cycle_color(float(h)) if cia else zone_color(float(h), s.theme),
+                        s.sea_fade) for h in sea_z["std_hours"]]
+        sea_z.plot(ax=ax, color=cols, linewidth=0, zorder=0.6)
 
     # 2b. Husos sobre tierra, a color pleno.
     z = _clip(gpd.read_file(CACHE / "zones_land.gpkg"), s).to_crs(crs)
-    for _, row in z.iterrows():
-        h = float(row["std_hours"])
-        col = cycle_color(h) if cia else zone_color(h, s.theme)
-        gpd.GeoSeries([row.geometry], crs=crs).plot(
-            ax=ax, color=col, linewidth=0, zorder=1)
+    zcols = [cycle_color(float(h)) if cia else zone_color(float(h), s.theme)
+             for h in z["std_hours"]]
+    z.plot(ax=ax, color=zcols, linewidth=0, zorder=1)
 
     # 3. Los fraccionarios se distinguen por rayado, no por color aparte.
     #    Va sobre el huso completo y no solo sobre la tierra: comparten

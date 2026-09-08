@@ -31,48 +31,69 @@ def build() -> None:
     CACHE.mkdir(parents=True, exist_ok=True)
     rules = all_rules()
 
-    print("husos horarios (ya recortados a tierra en origen)...")
-    tz = gpd.read_file(TZ_SRC)
-    tz["std_hours"] = tz["tzid"].map(lambda t: rules[t].std_hours if t in rules else None)
-    tz = tz[tz["std_hours"].notna()]
+    from . import cache_key
+    from .zone_fixes import FIXES, OVERLAPS
 
-    print("  disolviendo por offset...")
-    bands = tz.dissolve(by="std_hours", as_index=False)[["std_hours", "geometry"]]
-    print(f"  vertices: {_vertices(bands):,}")
+    # La capa de tierra tambien se cachea: disolver, recortar contra Natural
+    # Earth y simplificar son ~30 segundos que no cambian salvo que cambien
+    # la fuente, los umbrales o las tablas de correccion.
+    land_key = cache_key.fingerprint(
+        {"SIMPLIFY_ZONES": SIMPLIFY_ZONES,
+         "fixes": [f[0] for f in FIXES],
+         "overlaps": [(o[0], o[3], o[4]) for o in OVERLAPS]},
+        code=Path(__file__),
+        data=str(TZ_SRC.stat().st_size))
+    bands = cache_key.load("land", land_key)
+    if bands is not None:
+        print("capa de tierra: reusando cache")
+    else:
+        print("husos horarios (ya recortados a tierra en origen)...")
+        tz = gpd.read_file(TZ_SRC)
+        tz["std_hours"] = tz["tzid"].map(lambda t: rules[t].std_hours if t in rules else None)
+        tz = tz[tz["std_hours"].notna()]
 
-    # La fuente incluye aguas alrededor de islas remotas: Pacific/Easter es
-    # un poligono de 66 grados^2 (la isla mide 0.015). Sin recortar, esas
-    # manchas se dibujan como si fueran tierra.
-    print("  recortando contra la tierra de Natural Earth...")
-    land = gpd.read_file(RAW / "ne_10m_land.zip")[["geometry"]]
-    try:
-        islands = gpd.read_file(RAW / "ne_10m_minor_islands.zip")[["geometry"]]
-        land = pd.concat([land, islands], ignore_index=True)
-    except Exception:
-        pass
-    land_union = gpd.GeoDataFrame(land, crs="EPSG:4326").geometry.buffer(0).union_all()
-    bands["geometry"] = bands.geometry.buffer(0).intersection(land_union)
-    bands = bands[~bands.geometry.is_empty & bands.geometry.notna()]
-    print(f"  vertices tras recorte: {_vertices(bands):,}")
+        print("  disolviendo por offset...")
+        bands = tz.dissolve(by="std_hours", as_index=False)[["std_hours", "geometry"]]
+        print(f"  vertices: {_vertices(bands):,}")
 
-    from .zone_fixes import apply as apply_fixes, resolve_overlaps
-    bands, overlaps = resolve_overlaps(bands)
-    for line in overlaps:
-        print(f"  solape resuelto -> {line}")
-    bands, applied = apply_fixes(bands)
-    for line in applied:
-        print(f"  correccion de huso -> {line}")
+        # La fuente incluye aguas alrededor de islas remotas: Pacific/Easter es
+        # un poligono de 66 grados^2 (la isla mide 0.015). Sin recortar, esas
+        # manchas se dibujan como si fueran tierra.
+        print("  recortando contra la tierra de Natural Earth...")
+        land = gpd.read_file(RAW / "ne_10m_land.zip")[["geometry"]]
+        try:
+            islands = gpd.read_file(RAW / "ne_10m_minor_islands.zip")[["geometry"]]
+            land = pd.concat([land, islands], ignore_index=True)
+        except Exception:
+            pass
+        land_union = gpd.GeoDataFrame(land, crs="EPSG:4326").geometry.buffer(0).union_all()
+        bands["geometry"] = bands.geometry.buffer(0).intersection(land_union)
+        bands = bands[~bands.geometry.is_empty & bands.geometry.notna()]
+        print(f"  vertices tras recorte: {_vertices(bands):,}")
 
-    bands["geometry"] = bands.geometry.simplify(SIMPLIFY_ZONES, preserve_topology=True)
-    print(f"  vertices tras simplify({SIMPLIFY_ZONES}): {_vertices(bands):,}")
+        from .zone_fixes import apply as apply_fixes, resolve_overlaps
+        bands, overlaps = resolve_overlaps(bands)
+        for line in overlaps:
+            print(f"  solape resuelto -> {line}")
+        bands, applied = apply_fixes(bands)
+        for line in applied:
+            print(f"  correccion de huso -> {line}")
+
+        bands["geometry"] = bands.geometry.simplify(SIMPLIFY_ZONES, preserve_topology=True)
+        print(f"  vertices tras simplify({SIMPLIFY_ZONES}): {_vertices(bands):,}")
+        cache_key.save("land", land_key, bands)
+
     bands.to_file(CACHE / "zones_land.gpkg", layer="zones", driver="GPKG")
 
-    from . import cache_key
     from .generalize import build as build_sea, params as sea_params
     key = cache_key.fingerprint(
         {**sea_params(), "SIMPLIFY_ZONES": SIMPLIFY_ZONES},
         code=Path(__file__).with_name("generalize.py"),
-        data=cache_key.geometry_digest(bands))
+        # Se encadena con la clave de la tierra en vez de hashear su
+        # geometria: al volver del gpkg la precision cambia y la huella no
+        # coincidia, asi que el cache del mar fallaba siempre que el de
+        # tierra acertaba.
+        data=land_key)
     sea = cache_key.load("sea", key)
     if sea is not None:
         print("generalizacion del mar: reusando cache")

@@ -60,6 +60,31 @@ def _sea_no_overlap(sea: gpd.GeoDataFrame) -> Result:
     return Result("los husos no se pisan", pct < 0.5, f"{pct:.2f}% solapado")
 
 
+def _no_pairwise_overlap(land: gpd.GeoDataFrame) -> Result:
+    """Ningun par de husos puede reclamar el mismo territorio.
+
+    El chequeo global por porcentaje no alcanzaba: un solape de 175
+    grados^2 entre UTC+6 y UTC+8 sobre Xinjiang daba 0.27% del total y
+    pasaba, pero en el mapa dejaba un borde que no era ningun limite real.
+    """
+    worst, pair = 0.0, None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        hs = sorted(float(v) for v in land["std_hours"])
+        geoms = {float(r["std_hours"]): r.geometry for _, r in land.iterrows()}
+        for i, a in enumerate(hs):
+            for b in hs[i + 1:]:
+                ga, gb = geoms[a], geoms[b]
+                if not ga.intersects(gb):
+                    continue
+                area = ga.intersection(gb).area
+                if area > worst:
+                    worst, pair = area, (a, b)
+    return Result("sin solapes entre husos", worst < 1.0,
+                  "ninguno" if pair is None or worst < 1.0
+                  else f"UTC{pair[0]:+g}/UTC{pair[1]:+g}: {worst:.0f} grados^2")
+
+
 def _land_inside_own_zone(land: gpd.GeoDataFrame,
                           sea: gpd.GeoDataFrame) -> Result:
     """Cada trozo de tierra debe caer dentro del huso de su mismo offset."""
@@ -220,6 +245,7 @@ def run() -> bool:
         _no_runaway_pieces(sea),
         _sea_covers_world(sea),
         _sea_no_overlap(sea),
+        _no_pairwise_overlap(land),
         _land_inside_own_zone(land, sea),
         _fractional_zones_stay_local(land, sea),
         _named_territories_resolve(land, sea),

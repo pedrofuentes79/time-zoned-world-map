@@ -55,7 +55,10 @@ def build() -> None:
     bands = bands[~bands.geometry.is_empty & bands.geometry.notna()]
     print(f"  vertices tras recorte: {_vertices(bands):,}")
 
-    from .zone_fixes import apply as apply_fixes
+    from .zone_fixes import apply as apply_fixes, resolve_overlaps
+    bands, overlaps = resolve_overlaps(bands)
+    for line in overlaps:
+        print(f"  solape resuelto -> {line}")
     bands, applied = apply_fixes(bands)
     for line in applied:
         print(f"  correccion de huso -> {line}")

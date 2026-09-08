@@ -432,8 +432,12 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
             ax=ax, color=col, linewidth=0, zorder=1)
 
     # 3. Los fraccionarios se distinguen por rayado, no por color aparte.
+    #    Va sobre el huso completo y no solo sobre la tierra: comparten
+    #    color con su hora base, asi que un recuadro sin rayar es invisible.
+    #    Las Laquedivas (+5:30) se leian como si fueran +5.
     if cia:
-        frac = z[z["std_hours"] != z["std_hours"].astype(int)]
+        src = sea_z if sea_z is not None else z
+        frac = src[src["std_hours"] != src["std_hours"].astype(int)]
         if len(frac):
             with mpl.rc_context({"hatch.color": th["zone_edge"],
                                  "hatch.linewidth": 0.5}):

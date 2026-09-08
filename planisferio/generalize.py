@@ -56,7 +56,11 @@ GROUP_RADIUS_DEG = 3.0
 # cada continente invadiera las bandas vecinas.
 CLOSING_DEG = 1.3
 OFFSHORE_PAD = 0.35
-OFFSHORE_SIMPLIFY = 0.7
+# El relleno de fiordos lo hace el cierre, no esto: aca solo se bajan
+# vertices. A 0.7 grados (~78 km) convertia la costa de mares chicos en
+# segmentos rectos larguisimos, y el Golfo Persico quedaba como un poligono
+# angular arbitrario.
+OFFSHORE_SIMPLIFY = 0.2
 # Solo las masas de tierra grandes aportan contorno mar adentro. Sobre
 # atolones dispersos el cierre los une en manchas y el simplify las vuelve
 # triangulos arbitrarios: asi se veia la Polinesia Francesa. Las islas
@@ -101,6 +105,9 @@ TERRITORIES = [
     # UTC+10:30 no tiene banda teorica propia (solo la tienen las horas
     # enteras), asi que no hay adonde estirar: recuadro suelto.
     ("Lord Howe",             159.08,  -31.55,  10.5, "box"),
+    # UTC+5:30 no tiene banda propia y comparte color con la banda de UTC+5
+    # donde caen: sin recuadro se leen como si fueran +5.
+    ("Islas Laquedivas",       72.64,   10.57,   5.5, "box"),
 ]
 
 
@@ -171,7 +178,13 @@ def _nearest_part(parts: gpd.GeoDataFrame, hours: float, lon: float, lat_: float
 
 
 def _near_own_land(row, parts: gpd.GeoDataFrame, sindex) -> bool:
-    """La isla tiene tierra de su mismo huso a un paso."""
+    """La isla tiene tierra MAS GRANDE de su mismo huso a un paso.
+
+    El tamano importa: sirve para no encajonar islotes pegados a su
+    continente, pero un archipielago tiene islotes propios y esos no deben
+    contar. Socotra (0.30 grados^2) quedaba sin recuadro porque sus propios
+    satelites (0.00 a 0.01) disparaban la regla.
+    """
     g = row.geometry
     x0, y0, x1, y1 = g.bounds
     d = NEAR_OWN_LAND_DEG
@@ -183,6 +196,8 @@ def _near_own_land(row, parts: gpd.GeoDataFrame, sindex) -> bool:
             if other["std_hours"] != row["std_hours"]:
                 continue
             if other.geometry.equals(g):
+                continue
+            if other["_area"] <= row["_area"]:
                 continue
             if other.geometry.distance(g) < d:
                 return True

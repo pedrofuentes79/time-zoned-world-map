@@ -92,8 +92,11 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
         size_u = size_pt * unit
         sov = row["sovereign"] if isinstance(row["sovereign"], str) else None
 
+        # Una isla chica se tapa a si misma si el nombre va centrado
+        # encima: para esas se arranca a un costado.
+        candidates = OFFSETS if (not island or int(row["rank"]) < 4) else OFFSETS[1:]
         spot = None
-        for i, (dx, dy) in enumerate(OFFSETS):
+        for i, (dx, dy) in enumerate(candidates):
             cx = pt.x + dx * size_u * 3.2
             cy = pt.y + dy * size_u * 1.5
             b = text_box(cx, cy, name, size_u)

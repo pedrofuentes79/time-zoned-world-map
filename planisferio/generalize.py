@@ -29,7 +29,7 @@ import warnings
 
 import geopandas as gpd
 from shapely.geometry import Point, box
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, unary_union
 
 # --- recuadros automaticos ---------------------------------------------
 # Trozo de tierra que se considera isla y puede llevar recuadro.
@@ -105,6 +105,10 @@ TERRITORIES = [
     # UTC+10:30 no tiene banda teorica propia (solo la tienen las horas
     # enteras), asi que no hay adonde estirar: recuadro suelto.
     ("Lord Howe",             159.08,  -31.55,  10.5, "box"),
+    # Auckland, Campbell y las demas subantarticas son todas UTC+12 igual
+    # que Nueva Zelanda. Sueltas quedaban como recuadros aislados; con
+    # "arm+" el huso se estira y se lee como una sola zona.
+    ("Subantárticas de N.Z.",  167.50,  -51.50,  12.0, "arm+"),
     # UTC+5:30 no tiene banda propia y comparte color con la banda de UTC+5
     # donde caen: sin recuadro se leen como si fueran +5.
     ("Islas Laquedivas",       72.64,   10.57,   5.5, "box"),
@@ -278,15 +282,22 @@ def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
         bx0, bx1 = x0 - ISLAND_PAD, x1 + ISLAND_PAD
         band = _theoretical_band(h, lat)
         if mode == "arm+":
-            # Se estira tambien hacia la tierra continental de su huso, para
-            # que territorio y continente sean una sola forma.
+            # Corredor hasta la tierra mas cercana del mismo huso, en la
+            # direccion que haga falta. Estirar solo hacia el oeste no
+            # servia para las subantarticas de Nueva Zelanda, que tienen su
+            # continente al norte.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
                 same = parts[(parts["std_hours"] == h)
                              & (~parts.geometry.geom_equals(geom))]
                 if not same.empty:
                     j = same.geometry.distance(geom).idxmin()
-                    bx0 = min(bx0, same.loc[j].geometry.bounds[2])
+                    a, b = nearest_points(geom, same.loc[j].geometry)
+                    arms.setdefault(h, []).append(
+                        box(min(a.x, b.x) - CONNECTOR_PAD,
+                            min(a.y, b.y) - CONNECTOR_PAD,
+                            max(a.x, b.x) + CONNECTOR_PAD,
+                            max(a.y, b.y) + CONNECTOR_PAD))
         if mode == "box" or band is None:
             boxes.setdefault(h, []).append(
                 box(bx0, max(y0 - ISLAND_PAD, lat[0]),

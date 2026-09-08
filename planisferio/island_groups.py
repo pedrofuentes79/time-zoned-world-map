@@ -27,6 +27,9 @@ CLUSTER_DEG = 2.0
 MIN_ISLANDS = 4
 # Margen del panel alrededor del grupo.
 PAD_DEG = 0.5
+# Radio de las esquinas: un rectangulo de canto vivo se lee como recuadro
+# de huso, que es otra cosa. Redondeado se lee como sombreado.
+CORNER_DEG = 0.45
 # Un grupo desparramado no se sombrea: el panel taparia medio oceano. El
 # tope tiene que dar para la cadena hawaiana entera, que mide 24 grados
 # desde Kure hasta la Isla Grande.
@@ -52,7 +55,11 @@ def build(land: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             x0, y0, x1, y1 = unary_union(list(inside.geometry)).bounds
             if max(x1 - x0, y1 - y0) > MAX_SPAN_DEG:
                 continue
-            rows.append({"n": len(inside),
-                         "geometry": box(x0 - PAD_DEG, y0 - PAD_DEG,
-                                         x1 + PAD_DEG, y1 + PAD_DEG)})
+            panel = box(x0 - PAD_DEG, y0 - PAD_DEG,
+                        x1 + PAD_DEG, y1 + PAD_DEG)
+            r = min(CORNER_DEG, (x1 - x0 + 2 * PAD_DEG) / 4,
+                    (y1 - y0 + 2 * PAD_DEG) / 4)
+            if r > 0:
+                panel = panel.buffer(-r).buffer(r, join_style="round")
+            rows.append({"n": len(inside), "geometry": panel})
     return gpd.GeoDataFrame(rows, crs=land.crs)

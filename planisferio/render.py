@@ -49,7 +49,9 @@ class Style:
     palette: str | None = None      # None = el ciclo de la CIA;
                                     # "duo" | "sepia" | "cuatro"
     island_panels: bool = True      # sombreado suave tras los archipielagos
-    panel_alpha: float = 0.07
+    panel_alpha: float = 0.10
+    panel_edge_alpha: float = 0.45   # el borde marca bastante mas
+    panel_edge_w: float = 0.9
     sea_zones: bool = True          # husos nauticos pintados en el oceano
     sea_fade: float = 0.25          # cuanto se aclara el huso sobre el mar.
                                     # 0 = mar y tierra identicos (el huso se
@@ -509,8 +511,13 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
             if len(pan):
                 # Encima del relleno del huso pero debajo de los limites y
                 # de la tierra: sombrea el mar del grupo sin ensuciar nada.
+                # El borde marca un poco mas que el interior: sin eso el
+                # panel se lee como una mancha y no como un panel.
                 pan.plot(ax=ax, facecolor=th["label"], edgecolor="none",
                          linewidth=0, alpha=s.panel_alpha, zorder=0.9)
+                pan.boundary.plot(ax=ax, color=th["label"],
+                                  linewidth=s.panel_edge_w,
+                                  alpha=s.panel_edge_alpha, zorder=0.95)
 
     if s.zone_edges:
         # El limite de huso sale SOLO de la capa de mar, que es la particion

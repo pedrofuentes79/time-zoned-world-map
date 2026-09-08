@@ -116,8 +116,9 @@ def build() -> None:
     from .label_data import build as build_labels
     lab = build_labels(co)
     lab.to_file(CACHE / "labels.gpkg", layer="labels", driver="GPKG")
-    n_isl = int((lab["kind"] == "island").sum())
-    print(f"  {len(lab)} rotulos ({len(lab) - n_isl} paises, {n_isl} islas)")
+    counts = lab["kind"].value_counts().to_dict()
+    print(f"  {len(lab)} rotulos (" + ", ".join(
+        f"{v} {k}" for k, v in sorted(counts.items())) + ")")
 
     print("nombres de mares y oceanos...")
     marine = gpd.read_file(RAW / "ne_10m_geography_marine_polys.zip")

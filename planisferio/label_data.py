@@ -258,6 +258,32 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
     return rows
 
 
+# Ciudades. SCALERANK 0 son las capitales mundiales; 4 llega a 1128, que es
+# donde el papel empieza a llenarse. Se puede subir, pero compiten con las
+# islas por el mismo espacio.
+CITY_MAX_SCALERANK = 4
+
+
+def _cities(taken: set) -> list[dict]:
+    cities = gpd.read_file(RAW / "ne_10m_populated_places.zip")
+    cities = cities[cities["SCALERANK"] <= CITY_MAX_SCALERANK]
+    rows = []
+    for _, c in cities.iterrows():
+        name = c["NAME_ES"] or c["NAME"]
+        if not name or _norm(name) in taken:
+            continue
+        taken.add(_norm(name))
+        sr = int(c["SCALERANK"])
+        rows.append({
+            "kind": "city", "name": name, "sovereign": None,
+            # Por debajo de los paises, por encima de las islas menores.
+            "priority": float(100 - sr),
+            "lon": float(c.geometry.x), "lat": float(c.geometry.y),
+            "rank": sr,
+        })
+    return rows
+
+
 def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     rows = []
 
@@ -319,6 +345,8 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         taken.add(_norm(name))
         rows.append({"kind": "island", "name": name, "sovereign": sov,
                      "priority": 3.0, "lon": lon, "lat": lat, "rank": 5})
+
+    rows += _cities(taken)
 
     land = gpd.read_file("data/cache/zones_land.gpkg")
     rows += _islands_from_geometry(land, taken, rows)

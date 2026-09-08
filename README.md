@@ -66,6 +66,7 @@ lineas y rotulos.
 | Límites de husos | [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder) 2026c | ODbL |
 | Costas, países, mares | Natural Earth 10m | dominio público |
 | Nombres de islas | [GeoNames](https://download.geonames.org/export/dump/) | CC BY 4.0 |
+| Ciudades | Natural Earth 10m | dominio público |
 
 Los offsets y el horario de verano **no están escritos en el código**: se
 derivan de tzdata en tiempo de ejecución. Cuando un país cambia sus reglas,

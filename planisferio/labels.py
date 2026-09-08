@@ -30,6 +30,10 @@ OFFSETS = [
 COUNTRY_STEPS = (0.62, 0.78, 0.92, 1.06, 1.24)
 # Cuerpo relativo de las islas, por SCALERANK de Natural Earth (0 = Melanesia,
 # 7 = islote). Siempre por debajo de un pais: son informacion de detalle.
+# Ciudades, por SCALERANK de Natural Earth (0 = Tokio, Nueva York).
+CITY_BY_RANK = {0: 0.80, 1: 0.72, 2: 0.66, 3: 0.60, 4: 0.55}
+CITY_DOT_PT = {0: 2.2, 1: 1.9, 2: 1.7, 3: 1.5, 4: 1.3}
+
 # El rank 8 es la capa de detalle: islas menores, en cuerpo minusculo.
 # A A0 son ~0.9 mm de altura: invisibles de lejos, legibles de cerca.
 ISLAND_BY_RANK = {0: 0.72, 1: 0.72, 2: 0.62, 3: 0.62,
@@ -89,8 +93,13 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
     halo = [pe.withStroke(linewidth=1.5, foreground=th["label_halo"])]
 
     for (_, row), pt in zip(c.iterrows(), proj.geometry):
-        island = row["kind"] == "island"
-        if island:
+        kind = row["kind"]
+        island = kind == "island"
+        city = kind == "city"
+        if city:
+            size_pt = s.label_size_pt * CITY_BY_RANK.get(int(row["rank"]), 0.55)
+            name = str(row["name"])
+        elif island:
             size_pt = s.label_size_pt * ISLAND_BY_RANK.get(int(row["rank"]), 0.44)
             name = str(row["name"])
         else:
@@ -100,8 +109,10 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
         sov = row["sovereign"] if isinstance(row["sovereign"], str) else None
 
         # Una isla chica se tapa a si misma si el nombre va centrado
-        # encima: para esas se arranca a un costado.
-        candidates = OFFSETS if (not island or int(row["rank"]) < 4) else OFFSETS[1:]
+        # encima: para esas se arranca a un costado. Una ciudad nunca lleva
+        # el nombre sobre su propio punto.
+        centred_ok = not (city or (island and int(row["rank"]) >= 4))
+        candidates = OFFSETS if centred_ok else OFFSETS[1:]
         # El paso se mide contra el tamano de la isla, no solo contra el
         # cuerpo del texto: a 2 pt, correr "linea y media" son decimas de
         # milimetro y el nombre seguia cayendo encima.
@@ -148,6 +159,11 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
                     alpha=0.7, zorder=7)
             ax.plot([pt.x], [pt.y], marker="o", markersize=0.9,
                     color=th["label"], alpha=0.8, zorder=7)
+        if city:
+            ax.plot([pt.x], [pt.y], marker="o",
+                    markersize=CITY_DOT_PT.get(int(row["rank"]), 1.3),
+                    color=th["label"], zorder=8.2,
+                    markeredgecolor=th["label_halo"], markeredgewidth=0.3)
         detail = island and int(row["rank"]) >= DETAIL_RANK
         ax.text(cx, cy, name, fontsize=size_pt, ha="center", va="center",
                 color=th["label"], zorder=8, path_effects=halo,

@@ -153,14 +153,21 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
     # Las que no pasan el corte no se descartan: van en cuerpo minusculo,
     # como capa de detalle. De lejos el mapa se lee limpio; de cerca
     # aparecen los nombres.
+    # Se rotulan todas las que se ven; lo que cambia es el cuerpo. Una isla
+    # va a la capa de detalle si no es grande ni domina su vecindario.
+    #
+    # La notoriedad (que GeoNames le registre nombre en espanol) no entra
+    # aca: sirve para saber si vale la pena nombrarla, no de que tamano.
+    # Dirk Hartog tiene nombre registrado pero mide 0.06 grados^2 pegada a
+    # Australia, y le corresponde detalle, no un rotulo de 4 pt.
     sel, minor = [], set()
     for i, (g, a) in enumerate(zip(all_parts.geometry, all_parts["_area"])):
         if not (ISLAND_MIN_DEG2 <= a <= ISLAND_MAX_DEG2):
             continue
         sel.append(i)
-        if not (a >= ISLAND_BIG_DEG2 or i in notable
+        if not (a >= ISLAND_BIG_DEG2
                 or _dominates(i, g, a, all_parts, all_ix)):
-            minor.add(i)
+            minor.add(i)                  # se rotula, pero en detalle
     parts = all_parts.iloc[sel].reset_index(drop=True)
     minor_local = {k for k, i in enumerate(sel) if i in minor}
 

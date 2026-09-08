@@ -106,11 +106,18 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
         # cuerpo del texto: a 2 pt, correr "linea y media" son decimas de
         # milimetro y el nombre seguia cayendo encima.
         radius = 0.0
+        own: Box | None = None
         if island:
             area = max(float(row["priority"]), 0.0)
             radius = (area / 3.14159) ** 0.5 * deg
-        step_x = max(size_u * 3.2, radius + size_u * 1.2)
-        step_y = max(size_u * 1.5, radius + size_u * 0.9)
+            # Las islas mayores llevan el nombre encima a proposito; las
+            # chicas no deben quedar tapadas por su propio rotulo.
+            if int(row["rank"]) >= 4:
+                own = Box(pt.x - radius, pt.y - radius,
+                          pt.x + radius, pt.y + radius)
+        half_w = len(name) * size_u * 0.30
+        step_x = max(size_u * 3.2, radius + half_w + size_u * 0.6)
+        step_y = max(size_u * 1.5, radius + size_u * 1.1)
 
         spot = None
         for i, (dx, dy) in enumerate(candidates):
@@ -121,6 +128,9 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
             if sov:
                 boxes.append(text_box(cx, cy - size_u * 1.15,
                                       f"({sov})", size_u * 0.78))
+            # No taparse a si misma, y no pisar lo ya colocado.
+            if own is not None and any(bb.hits(own) for bb in boxes):
+                continue
             if not any(bb.hits(p, pad=size_u * 0.16) for bb in boxes for p in placed):
                 spot = (cx, cy, boxes, i)
                 break

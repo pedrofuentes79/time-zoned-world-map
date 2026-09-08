@@ -16,8 +16,17 @@ Todo en español. Las Malvinas se llaman Islas Malvinas.
 uv sync
 ./scripts/download.sh          # ~170 MB a data/raw/
 uv run python -m planisferio.prep     # construye data/cache/ y valida
-uv run python -m planisferio.poster   # escribe out/
+uv run python -m planisferio.poster   # SVG + PDF + PNG a 200 dpi
 ```
+
+Opciones del poster: `--dpi 300` para un PNG mas grande, `--no-png` para
+saltear el rasterizado. A0 a 200 dpi son 9362x6622 px y unos 7 MB; a 300 dpi
+son 139 Mpx, que muchos visores no abren comodos.
+
+Para mirar el resultado conviene el **PDF**, que es lo que va a imprenta y
+hace zoom sin perder nitidez (`evince out/planisferio_a0.pdf`). El SVG se
+abre bien en un navegador o en Inkscape, que ademas sirve para retocarlo.
+QGIS no: esto ya es un grafico terminado, no datos geograficos.
 
 `prep.py` tarda unos minutos la primera vez por el cierre morfológico de
 las costas; el resultado queda cacheado con una huella de sus entradas,

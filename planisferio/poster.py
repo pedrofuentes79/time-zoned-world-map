@@ -1,5 +1,18 @@
-"""Genera el poster A0. Ejecutar con: uv run python -m planisferio.poster"""
+"""Genera el poster A0.
+
+    uv run python -m planisferio.poster            # SVG + PDF + PNG a 200 dpi
+    uv run python -m planisferio.poster --dpi 300  # PNG mas grande
+    uv run python -m planisferio.poster --no-png   # solo vectorial
+
+El PNG se rasteriza con Inkscape. A0 a 200 dpi son 9362x6622 px; a 300 dpi
+son 139 Mpx, que muchos visores no abren comodos.
+"""
 from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+from pathlib import Path
 
 from .render import Style, render
 
@@ -16,6 +29,32 @@ A0 = Style(
     credit="tzdata 2026c · timezone-boundary-builder · Natural Earth 10m",
 )
 
+
+def rasterize(svg: Path, dpi: int) -> Path | None:
+    if shutil.which("inkscape") is None:
+        print("  aviso: sin inkscape, no se genera PNG")
+        return None
+    png = svg.with_suffix(".png")
+    subprocess.run(
+        ["inkscape", "--export-type=png", f"--export-dpi={dpi}",
+         f"--export-filename={png}", str(svg)],
+        check=True, capture_output=True)
+    mb = png.stat().st_size / 1e6
+    print(f"  PNG a {dpi} dpi: {png} ({mb:.0f} MB)")
+    return png
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dpi", type=int, default=200)
+    ap.add_argument("--no-png", action="store_true")
+    args = ap.parse_args()
+
+    svg = render(A0, outfile="planisferio_a0")
+    print(f"  vectorial: {svg} y {svg.with_suffix('.pdf')}")
+    if not args.no_png:
+        rasterize(svg, args.dpi)
+
+
 if __name__ == "__main__":
-    path = render(A0, outfile="planisferio_a0")
-    print(f"escrito: {path} y {path.with_suffix('.pdf')}")
+    main()

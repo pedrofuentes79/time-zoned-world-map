@@ -43,6 +43,14 @@ SOVEREIGN_ABBR = {
 # Natural Earth refleja el control efectivo; este mapa se hace desde la
 # posicion argentina, coherente con rotular el archipielago como Islas
 # Malvinas y no como Falkland Islands.
+# Por unidad administrativa: alcanza a cualquier isla del archipielago,
+# aparezca hoy o mas adelante. Por nombre habia que enumerar islote por
+# islote, y las que no llegaban a rotularse quedaban como config muerta.
+ADMIN_SOVEREIGN_OVERRIDES = {
+    "Falkland Islands": "ARGENTINA",
+    "South Georgia and the Islands": "ARGENTINA",
+}
+
 SOVEREIGN_OVERRIDES = {
     "Isla Gran Malvina": "ARGENTINA",
     "Isla Soledad": "ARGENTINA",
@@ -71,6 +79,22 @@ EXTRA_LABELS = [
     ("Danmarkshavn",        "DIN.",   -18.80,  76.80),
     ("Pituffik",            "DIN.",   -68.70,  76.55),
 ]
+
+
+# GeoNames devuelve el nombre ingles de varias islas menores de Malvinas.
+# En un mapa en castellano no corresponde.
+ISLAND_NAME_OVERRIDES = {
+    "Weddell Island": "Isla San José",
+    "Pebble Island": "Isla Borbón",
+    "Saunders Island": "Isla Trinidad",
+    "Keppel Island": "Isla de la Vigía",
+    "Lively Island": "Isla Bougainville",
+    "George Island": "Isla Jorge",
+    "Speedwell Island": "Isla Águila",
+    "Beaver Island": "Isla San Rafael",
+    "New Island": "Isla Goicoechea",
+    "Montagu Island": "Isla Montagu",
+}
 
 
 def _norm(name: str) -> str:
@@ -195,6 +219,7 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
         sov = gpd.sjoin(rep_gdf, admin, how="left", predicate="within")
     sov_by_i = {i: (so if so != ad else None)
                 for i, so, ad in zip(sov["i"], sov["SOVEREIGNT"], sov["ADMIN"])}
+    admin_by_i = dict(zip(sov["i"], sov["ADMIN"]))
 
     # Un poligono que ya tiene rotulo no recibe otro. Sin esto salian
     # "Isla Gran Nicobar" (Natural Earth) y "Great Nicobar Island"
@@ -213,11 +238,13 @@ def _islands_from_geometry(land: gpd.GeoDataFrame, taken: set,
     for i, r in best.iterrows():
         if i in occupied:
             continue
-        name = r["name_es"]
+        name = ISLAND_NAME_OVERRIDES.get(r["name"], r["name_es"])
         if not name or _norm(name) in taken:
             continue
         taken.add(_norm(name))
-        abbr = SOVEREIGN_ABBR.get(sov_by_i.get(i))
+        abbr = (SOVEREIGN_OVERRIDES.get(name)
+                or ADMIN_SOVEREIGN_OVERRIDES.get(admin_by_i.get(i))
+                or SOVEREIGN_ABBR.get(sov_by_i.get(i)))
         if abbr and _norm(abbr) == _norm(name):
             abbr = None
         pt = reps.iloc[i]
@@ -267,14 +294,16 @@ def build(countries: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     sov_by_idx = {i: (so if so != ad else None)
                   for i, so, ad in zip(joined["idx"], joined["SOVEREIGNT"],
                                        joined["ADMIN"])}
+    admin_by_idx = dict(zip(joined["idx"], joined["ADMIN"]))
     for (i, r), pt in zip(reg.iterrows(), pts):
         name = r["NAME_ES"] or r["NAME"]
         if not name or _norm(name) in taken:
             continue           # ya esta rotulada como pais
         taken.add(_norm(name))
         sov = sov_by_idx.get(i)
-        abbr = SOVEREIGN_OVERRIDES.get(name) or (
-            SOVEREIGN_ABBR.get(sov) if sov else None)
+        abbr = (SOVEREIGN_OVERRIDES.get(name)
+                or ADMIN_SOVEREIGN_OVERRIDES.get(admin_by_idx.get(i))
+                or (SOVEREIGN_ABBR.get(sov) if sov else None))
         if abbr and _norm(abbr) == _norm(name):
             abbr = None        # la isla es el pais
         rank = int(r["SCALERANK"]) if pd.notna(r["SCALERANK"]) else 7

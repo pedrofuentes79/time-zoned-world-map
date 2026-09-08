@@ -48,6 +48,8 @@ CONNECTOR_PAD = 0.7          # semialtura del corredor; mas fino que un recuadro
 # solo a la mas cercana al punto de la tabla. Sin esto, en las Islas del
 # Principe Eduardo quedaba Marion adentro y la otra afuera.
 GROUP_RADIUS_DEG = 3.0
+# Alcance en el que "arm+" busca la tierra principal de su huso.
+ARM_PLUS_REACH_DEG = 12.0
 
 # --- contorno mar adentro ----------------------------------------------
 # Un continente que sobresale de su banda no lleva el limite calcado sobre
@@ -288,16 +290,28 @@ def _build_boxes(parts: gpd.GeoDataFrame, lat: tuple[float, float]):
             # continente al norte.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
+                # Se excluye lo que toca al grupo, no solo lo identico: el
+                # grupo es una union de varias partes, asi que ninguna parte
+                # suelta le era igual y sus propias islas quedaban como
+                # candidatas. La mas cercana era ella misma, a distancia
+                # cero, y el corredor colapsaba.
                 same = parts[(parts["std_hours"] == h)
-                             & (~parts.geometry.geom_equals(geom))]
+                             & (~parts.geometry.intersects(geom))]
                 if not same.empty:
-                    j = same.geometry.distance(geom).idxmin()
-                    a, b = nearest_points(geom, same.loc[j].geometry)
+                    d = same.geometry.distance(geom)
+                    same = same[d <= ARM_PLUS_REACH_DEG]
+                if not same.empty:
+                    # La tierra MAS GRANDE del huso, no la mas cercana:
+                    # apuntando a la mas cercana el corredor se detenia en
+                    # las Snares y no llegaba a Nueva Zelanda.
+                    j = same["_area"].idxmax()
+                    _, near = nearest_points(geom, same.loc[j].geometry)
+                    # Rellena todo el area entre el grupo y su tierra, no un
+                    # corredor angosto: el mar entre Stewart y las Auckland
+                    # es parte del mismo huso y quedaba de otro color.
                     arms.setdefault(h, []).append(
-                        box(min(a.x, b.x) - CONNECTOR_PAD,
-                            min(a.y, b.y) - CONNECTOR_PAD,
-                            max(a.x, b.x) + CONNECTOR_PAD,
-                            max(a.y, b.y) + CONNECTOR_PAD))
+                        box(min(bx0, near.x), min(y0 - ISLAND_PAD, near.y),
+                            max(bx1, near.x), max(y1 + ISLAND_PAD, near.y)))
         if mode == "box" or band is None:
             boxes.setdefault(h, []).append(
                 box(bx0, max(y0 - ISLAND_PAD, lat[0]),

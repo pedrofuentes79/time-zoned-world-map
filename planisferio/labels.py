@@ -78,6 +78,7 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
     span_x = abs(xlim[1] - xlim[0]) or 1.0
     fig_w_in = ax.get_figure().get_size_inches()[0] * ax.get_position().width
     unit = span_x / (fig_w_in * 72.0)      # un punto tipografico en datos
+    deg = span_x / 360.0                   # un grado de longitud en datos
 
     countries = c[c["kind"] == "country"]
     quantiles = ([0.0] * 4 if countries.empty else
@@ -101,10 +102,20 @@ def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
         # Una isla chica se tapa a si misma si el nombre va centrado
         # encima: para esas se arranca a un costado.
         candidates = OFFSETS if (not island or int(row["rank"]) < 4) else OFFSETS[1:]
+        # El paso se mide contra el tamano de la isla, no solo contra el
+        # cuerpo del texto: a 2 pt, correr "linea y media" son decimas de
+        # milimetro y el nombre seguia cayendo encima.
+        radius = 0.0
+        if island:
+            area = max(float(row["priority"]), 0.0)
+            radius = (area / 3.14159) ** 0.5 * deg
+        step_x = max(size_u * 3.2, radius + size_u * 1.2)
+        step_y = max(size_u * 1.5, radius + size_u * 0.9)
+
         spot = None
         for i, (dx, dy) in enumerate(candidates):
-            cx = pt.x + dx * size_u * 3.2
-            cy = pt.y + dy * size_u * 1.5
+            cx = pt.x + dx * step_x
+            cy = pt.y + dy * step_y
             b = text_box(cx, cy, name, size_u)
             boxes = [b]
             if sov:

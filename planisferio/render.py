@@ -16,8 +16,8 @@ from matplotlib.patches import Rectangle
 from shapely.geometry import LineString, Point, box
 
 from .palette import (CIA, CIA_BAND_A, CIA_BAND_B, CIA_CYCLE, INK, PAPER,
-                      cycle_color, lighten, offset_label,
-                      zone_color)
+                      PALETTES, cycle_color, lighten, offset_label,
+                      palette_color, zone_color)
 
 CACHE = Path("data/cache")
 OUT = Path("out")
@@ -46,6 +46,10 @@ NAME_OVERRIDES: dict[str, str] = {
 class Style:
     mode: str = "zones"             # "zones" | "bands"
     theme: str = "cia"              # "cia" | "paper" | "ink"
+    palette: str | None = None      # None = el ciclo de la CIA;
+                                    # "duo" | "sepia" | "cuatro"
+    island_panels: bool = True      # sombreado suave tras los archipielagos
+    panel_alpha: float = 0.07
     sea_zones: bool = True          # husos nauticos pintados en el oceano
     sea_fade: float = 0.25          # cuanto se aclara el huso sobre el mar.
                                     # 0 = mar y tierra identicos (el huso se
@@ -120,6 +124,13 @@ class Style:
     title: str = "LA HORA Y EL SOL"
     subtitle: str = "cuánto se aparta cada reloj de su meridiano solar"
     credit: str = ""
+
+
+def zone_fill(hours: float, s: Style) -> str:
+    """Color de relleno del huso, segun la paleta elegida."""
+    if s.palette:
+        return palette_color(hours, s.palette)
+    return cycle_color(hours) if s.theme == "cia" else zone_color(hours, s.theme)
 
 
 def theme_of(s: Style) -> dict:
@@ -308,10 +319,8 @@ def _hour_ruler(fig, s: Style, ax, th: dict) -> float:
     for k in range(-12, 13):
         if not neutral:
             face = band_color(k, s)
-        elif s.theme == "cia":
-            face = cycle_color(k)
         else:
-            face = zone_color(k, s.theme)
+            face = zone_fill(k, s)
         left, right = max(k - 0.5, -12.0), min(k + 0.5, 12.0)
         rax.add_patch(Rectangle((left, 0), right - left, 1, facecolor=face,
                                 edgecolor=th["zone_edge"] if neutral else th["bg"],
@@ -461,14 +470,13 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
     sea_z = None
     if s.sea_zones:
         sea_z = _clip(gpd.read_file(CACHE / "zones_sea.gpkg"), s).to_crs(crs)
-        cols = [lighten(cycle_color(float(h)) if cia else zone_color(float(h), s.theme),
-                        s.sea_fade) for h in sea_z["std_hours"]]
+        cols = [lighten(zone_fill(float(h), s), s.sea_fade)
+                for h in sea_z["std_hours"]]
         sea_z.plot(ax=ax, color=cols, linewidth=0, zorder=0.6)
 
     # 2b. Husos sobre tierra, a color pleno.
     z = _clip(gpd.read_file(CACHE / "zones_land.gpkg"), s).to_crs(crs)
-    zcols = [cycle_color(float(h)) if cia else zone_color(float(h), s.theme)
-             for h in z["std_hours"]]
+    zcols = [zone_fill(float(h), s) for h in z["std_hours"]]
     z.plot(ax=ax, color=zcols, linewidth=0, zorder=1)
 
     # 3. Los fraccionarios se distinguen por rayado, no por color aparte.
@@ -490,6 +498,19 @@ def _paint_zones(ax, crs, s: Style, th: dict) -> None:
         gpd.GeoSeries(lines, crs="EPSG:4326").to_crs(crs).plot(
             ax=ax, color=th["solar_line"], linewidth=0.5, alpha=0.75,
             linestyle=(0, (3.0, 3.0)), zorder=4)
+
+    # Sombreado del grupo de islas: un panel tenue sin borde duro, para que
+    # el archipielago se lea como conjunto. El recuadro sigue cargando el
+    # color del huso; esto solo lo agrupa.
+    if s.island_panels:
+        path = CACHE / "island_panels.gpkg"
+        if path.exists():
+            pan = _clip(gpd.read_file(path), s).to_crs(crs)
+            if len(pan):
+                # Encima del relleno del huso pero debajo de los limites y
+                # de la tierra: sombrea el mar del grupo sin ensuciar nada.
+                pan.plot(ax=ax, facecolor=th["label"], edgecolor="none",
+                         linewidth=0, alpha=s.panel_alpha, zorder=0.9)
 
     if s.zone_edges:
         # El limite de huso sale SOLO de la capa de mar, que es la particion
@@ -567,8 +588,9 @@ def _zones_key(fig, s: Style, th: dict, rect) -> None:
     if s.theme == "cia":
         # Las tres filas comparten ancho de muestra (0.60) para que los
         # textos arranquen todos en la misma x.
-        w = 0.60 / len(CIA_CYCLE)
-        for i, col in enumerate(CIA_CYCLE):
+        cyc = PALETTES[s.palette] if s.palette else CIA_CYCLE
+        w = 0.60 / len(cyc)
+        for i, col in enumerate(cyc):
             ax.add_patch(Rectangle((i * w, 0.60), w, 0.15, facecolor=col,
                                    edgecolor=th["zone_edge"], linewidth=0.3))
         ax.text(0.80, 0.675,
@@ -585,9 +607,9 @@ def _zones_key(fig, s: Style, th: dict, rect) -> None:
         # Solo tiene sentido explicar el contraste si existe.
         if s.sea_zones and s.sea_fade > 0.05:
             ax.add_patch(Rectangle((0, 0.12), 0.30, 0.15,
-                                   facecolor=lighten(CIA_CYCLE[3], s.sea_fade),
+                                   facecolor=lighten(cyc[-1], s.sea_fade),
                                    edgecolor=th["zone_edge"], linewidth=0.4))
-            ax.add_patch(Rectangle((0.30, 0.12), 0.30, 0.15, facecolor=CIA_CYCLE[3],
+            ax.add_patch(Rectangle((0.30, 0.12), 0.30, 0.15, facecolor=cyc[-1],
                                    edgecolor=th["zone_edge"], linewidth=0.4))
             ax.plot([0.30, 0.30], [0.12, 0.27], color=th["land_edge"], linewidth=0.6)
             ax.text(0.80, 0.195,

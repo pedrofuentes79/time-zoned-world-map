@@ -123,6 +123,16 @@ La soberania se muestra solo en las dependencias, donde ADMIN y SOVEREIGNT
 difieren en Natural Earth. Ponerla siempre llenaba el archipielago indonesio
 de "(INDONESIA)" sin agregar nada.
 
+### Archipielagos
+
+Un grupo disperso se lee como puntos sueltos: Maldivas son 67 manchas de un
+milimetro sin nada que las relacione. Se agrupan las islas cercanas y se
+sombrea el conjunto con un panel tenue, como hacen los mapas de referencia.
+
+El umbral minimo de isla tiene que ser muy chico (0.00002 grados^2): los
+atolones de Maldivas, Chagos o la cadena noroeste de Hawai son diminutos, y
+son justo el caso que el panel viene a resolver.
+
 ### Invariantes
 
 `prep.py` termina validando el cache. Cada bug que apareció durante el

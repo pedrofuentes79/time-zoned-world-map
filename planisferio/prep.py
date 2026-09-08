@@ -102,6 +102,12 @@ def build() -> None:
         sea = build_sea(bands[["std_hours", "geometry"]].copy())
         cache_key.save("sea", key, sea)
     sea.to_file(CACHE / "zones_sea.gpkg", layer="zones", driver="GPKG")
+    from .island_groups import build as build_groups
+    panels = build_groups(bands)
+    if len(panels):
+        panels.to_file(CACHE / "island_panels.gpkg", layer="panels",
+                       driver="GPKG")
+        print(f"  archipielagos sombreados: {len(panels)}")
     print(f"  {len(sea)} husos, vertices: {_vertices(sea):,}")
 
     print("paises (Natural Earth 10m)...")

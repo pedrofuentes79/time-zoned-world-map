@@ -84,3 +84,24 @@ def lighten(hex_color: str, amount: float, toward: str = "#ffffff") -> str:
     a, b = rgb(hex_color), rgb(toward)
     m = tuple(round(x + (y - x) * amount) for x, y in zip(a, b))
     return "#%02x%02x%02x" % m
+
+
+# --- paletas reducidas -------------------------------------------------
+# El ciclo de la CIA usa 7 colores. Con menos, el mapa depende mas del
+# limite de huso y del numero escrito que del relleno, y se acerca a un
+# grabado antiguo. Cada una es un ciclo: la longitud decide cada cuantas
+# bandas se repite un tono.
+
+PALETTES = {
+    # Dos tonos calidos alternados. Lo minimo para poder contar bandas.
+    "duo": ["#e8dcc4", "#cbb894"],
+    # Tres pasos del mismo ocre, como un grabado.
+    "sepia": ["#efe6d2", "#dfd0b0", "#c9b68e"],
+    # Cuatro tonos frios y calidos alternos, sin llegar al arcoiris.
+    "cuatro": ["#e9e2cf", "#cfd8c4", "#e6cfb4", "#b9c6c8"],
+}
+
+
+def palette_color(hours: float, name: str) -> str:
+    cyc = PALETTES[name]
+    return cyc[int(hours) % len(cyc)]

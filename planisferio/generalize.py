@@ -91,6 +91,10 @@ TERRITORIES = [
     # islas lo llenaban por completo: como caja respira.
     ("Cabo Verde",            -23.60,   15.10,  -1.0, "box"),
     ("Isla de Pascua",       -109.35,  -27.13,  -6.0, "arm"),
+    # La Isla Grande cae dentro de la banda pero Oahu y Kauai no, y Maui
+    # queda descartada por estar pegada a una mayor: el archipielago se
+    # dibujaba como puntos sueltos. Agrupado se lee como una unidad.
+    ("Hawái",                -157.50,   20.50, -10.0, "box"),
     # Kerguelen y Amsterdam caen dentro de la banda de UTC+5; Crozet no.
     ("Islas Crozet",           51.50,  -46.40,   5.0, "arm"),
     # Marion queda a 0.075 grados de la banda de UTC+2, asi que el recuadro
@@ -437,5 +441,12 @@ def build(land_zones: gpd.GeoDataFrame,
         [r for r in rows if not r["geometry"].is_empty], crs=land_zones.crs)
     out.attrs["boxed"] = gpd.GeoDataFrame(boxed, crs=land_zones.crs) if boxed \
         else gpd.GeoDataFrame({"std_hours": [], "named": [], "geometry": []},
+                              crs=land_zones.crs)
+    # Los recuadros, aparte: el mapa los usa para sombrear suavemente el
+    # grupo de islas, al modo de los mapas de referencia.
+    panels = [{"std_hours": h, "geometry": g}
+              for h, v in boxes.items() for g in v]
+    out.attrs["panels"] = gpd.GeoDataFrame(panels, crs=land_zones.crs) if panels \
+        else gpd.GeoDataFrame({"std_hours": [], "geometry": []},
                               crs=land_zones.crs)
     return out

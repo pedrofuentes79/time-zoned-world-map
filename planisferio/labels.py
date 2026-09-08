@@ -66,8 +66,8 @@ def _country_factor(area: float, quantiles: list[float]) -> float:
 
 def place(ax, labels: gpd.GeoDataFrame, crs, s, th,
           overrides: dict[str, str], reserved: list[Box] | None = None) -> dict:
-    lo, hi = s.lat_limits if s.projection not in {"equal_earth", "robinson",
-                                                  "natural_earth"} else (-90.0, 90.0)
+    from .render import effective_limits
+    lo, hi = effective_limits(s)
     c = labels[labels["lat"].between(lo + 1, hi - 1)].copy()
     if s.label_min_pop > 0 and "priority" in c:
         c = c[(c["kind"] == "country") | (c["priority"] > 0)]

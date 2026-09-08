@@ -16,7 +16,8 @@ Todo en español. Las Malvinas se llaman Islas Malvinas.
 uv sync
 ./scripts/download.sh          # ~800 MB a data/raw/
 uv run python -m planisferio.prep     # construye data/cache/ y valida
-uv run python -m planisferio.poster   # PNG a 400 dpi + PDF
+uv run python -m planisferio.poster      # Miller, la version principal
+uv run python -m planisferio.poster_ee   # Equal Earth, sin Antartida
 ```
 
 Opciones: `--formats png,pdf,svg` y `--dpi`. A0 a 400 dpi son 18724x13244 px
@@ -41,6 +42,21 @@ cachean con una huella de sus entradas, sus parámetros y su código.
 La clave del cache del mar se encadena con la de la tierra en vez de hashear
 su geometría: al volver del gpkg la precisión cambia y la huella no coincidía,
 así que el cache del mar fallaba justo cuando el de tierra acertaba.
+
+## Las dos proyecciones
+
+**Miller** es la principal. Los meridianos son rectas verticales, asi que
+las bandas horarias quedan como columnas y el mapa se lee contando.
+
+**Equal Earth** es equivalente en area: Africa y Sudamerica salen con su
+tamano real, y el mapa es mas lindo. El costo es que los meridianos se
+curvan y las bandas se abren en abanico, asi que la regla de abajo deja de
+alinearse con ellas y actua solo como clave de color.
+
+Las pseudocilindricas se dibujan enteras de polo a polo: recortarles la
+latitud les rompe el ovalo. Para dejar la Antartida afuera hay que quitarla
+de los datos (`drop_antarctica`), y ese corte vale para todo: relleno,
+lineas y rotulos.
 
 ## Fuentes
 

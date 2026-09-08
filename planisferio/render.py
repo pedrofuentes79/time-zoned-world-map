@@ -74,6 +74,11 @@ class Style:
     projection: str = "miller"
     lon0: float = 0.0
     lat_limits: tuple[float, float] = (-60.0, 85.0)
+    # Las pseudocilindricas se dibujan enteras: recortar la latitud les
+    # rompe el ovalo. Para dejar la Antartida afuera hay que quitarla de
+    # los datos, no del encuadre.
+    drop_antarctica: bool = False
+    antarctica_lat: float = -60.0
 
     page_mm: tuple[float, float] = (1189.0, 841.0)   # A0 apaisado
     margin_mm: float = 40.0
@@ -127,8 +132,18 @@ def band_color(hours: float, s: Style) -> str:
 
 
 def effective_limits(s: Style) -> tuple[float, float]:
-    """Las pseudocilindricas se dibujan enteras: cortarlas rompe el ovalo."""
-    return (-90.0, 90.0) if s.projection in PSEUDOCYLINDRICAL else s.lat_limits
+    """Latitudes que entran en el mapa.
+
+    Las pseudocilindricas se dibujan enteras: cortarlas rompe el ovalo. Para
+    dejar la Antartida afuera hay que quitarla de los datos, y ese corte
+    vale para todo: relleno, lineas y rotulos. Estaba solo en el recorte de
+    poligonos, asi que los nombres antarticos se dibujaban bajo el mapa,
+    encima de la leyenda.
+    """
+    lo, hi = (-90.0, 90.0) if s.projection in PSEUDOCYLINDRICAL else s.lat_limits
+    if s.drop_antarctica:
+        lo = max(lo, s.antarctica_lat)
+    return lo, hi
 
 
 def _clip(gdf: gpd.GeoDataFrame, s: Style) -> gpd.GeoDataFrame:
@@ -205,9 +220,8 @@ def render(s: Style, outfile: str | None = None,
     if s.show_labels:
         _labels(ax, countries, crs, s, th)
 
-    if s.hour_ruler:
-        _hour_ruler(fig, s, ax, th)
-    _chrome(fig, s, ax, th)
+    ruler_bottom = _hour_ruler(fig, s, ax, th) if s.hour_ruler else None
+    _chrome(fig, s, ax, th, ruler_bottom)
 
     OUT.mkdir(exist_ok=True)
     stem = OUT / (outfile or "planisferio")
@@ -259,7 +273,7 @@ def _labels(ax, countries: gpd.GeoDataFrame, crs, s: Style, th: dict) -> None:
 
 # ---------------------------------------------------------------- chrome
 
-def _hour_ruler(fig, s: Style, ax, th: dict) -> None:
+def _hour_ruler(fig, s: Style, ax, th: dict) -> float:
     """Regla recta de 24 columnas. Recupera la lectura en columna que las
     proyecciones de meridiano curvo rompen."""
     pos = ax.get_position()
@@ -267,6 +281,7 @@ def _hour_ruler(fig, s: Style, ax, th: dict) -> None:
     h = s.ruler_h_mm / s.page_mm[1]
     y = (pos.y1 + gap) if s.ruler_on_top else (pos.y0 - gap - h)
     rax = fig.add_axes((pos.x0, y, pos.width, h))
+    ruler_bottom = y
     # El mapa cubre 360 grados = 24 horas, no 25. Las celdas de -12 y +12
     # son medias: si se dibujan enteras, la regla se corre ~1% del ancho.
     rax.set_xlim(-12.0, 12.0); rax.set_ylim(0, 1); rax.set_axis_off()
@@ -299,6 +314,7 @@ def _hour_ruler(fig, s: Style, ax, th: dict) -> None:
         for j, lab in enumerate(subs):
             rax.text(cx, 0.22 - j * 0.19, lab, ha="center", va="center",
                      fontsize=s.legend_pt * 0.62, color=th["label"], alpha=0.75)
+    return ruler_bottom
 
 
 def _fractional_by_column() -> dict[int, list[str]]:
@@ -324,7 +340,8 @@ def _fractional_by_column() -> dict[int, list[str]]:
     return out
 
 
-def _chrome(fig, s: Style, ax, th: dict) -> None:
+def _chrome(fig, s: Style, ax, th: dict,
+            ruler_bottom: float | None = None) -> None:
     """Titulo, leyendas y timeline, en una grilla sin superposiciones."""
     mmx = lambda v: v / s.page_mm[0]
     mmy = lambda v: v / s.page_mm[1]
@@ -339,8 +356,12 @@ def _chrome(fig, s: Style, ax, th: dict) -> None:
                  color=th["label"], alpha=0.45, ha="right")
 
     # Una sola franja inferior, dividida en dos columnas.
+    # Se cuelga de la regla cuando esta abajo: con un mapa mas alto
+    # (Equal Earth) la regla bajaba al espacio de la leyenda y se pisaban.
     band_h = mmy(s.footer_mm * 0.46)
     y = mmy(s.margin_mm * 1.5)
+    if ruler_bottom is not None:
+        y = min(y, ruler_bottom - band_h - mmy(s.margin_mm * 0.4))
     if s.mode == "zones":
         _zones_key(fig, s, th, (x0, y, mmx(s.page_mm[0] * 0.62), band_h))
     if s.show_dst:

@@ -29,18 +29,29 @@ A0 = Style(
 )
 
 
-def _clean_stale(keep: str) -> None:
-    """Borra salidas de corridas anteriores.
+# Los posters que este proyecto genera. Cualquier otra cosa en out/ es de
+# una corrida vieja.
+KNOWN_STEMS = ("planisferio_a0", "planisferio_equal_earth")
 
-    Tener dos generaciones de archivos conviviendo en out/ hizo que se
-    revisara un mapa viejo creyendo que era el nuevo.
+
+def _clean_stale(stem: str, formats: tuple[str, ...]) -> None:
+    """Borra salidas viejas sin pisar la del otro poster.
+
+    Antes borraba todo lo que no empezara con su propio prefijo, asi que
+    generar los dos posters hacia que el segundo se llevara puesto al
+    primero. Y un formato que se dejo de emitir quedaba ahi para siempre:
+    revisar un archivo viejo creyendo que era el nuevo ya paso una vez.
     """
     out = Path("out")
     if not out.exists():
         return
     for f in out.iterdir():
-        if f.is_file() and not f.name.startswith(keep):
-            f.unlink()
+        if not f.is_file():
+            continue
+        if f.stem not in KNOWN_STEMS:
+            f.unlink()                       # nombre de otra generacion
+        elif f.stem == stem and f.suffix.lstrip(".") not in formats:
+            f.unlink()                       # formato que ya no se emite
 
 
 def main() -> None:
@@ -53,7 +64,7 @@ def main() -> None:
     args = ap.parse_args()
 
     fmts = tuple(f.strip() for f in args.formats.split(",") if f.strip())
-    _clean_stale("planisferio_a0")
+    _clean_stale("planisferio_a0", fmts)
     t = time.time()
     render(A0, outfile="planisferio_a0", formats=fmts, dpi=args.dpi)
     for f in fmts:
